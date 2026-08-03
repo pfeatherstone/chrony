@@ -8,6 +8,32 @@ namespace chrony
 
 //----------------------------------------------------------------------------------------------------------------
 
+    struct chrony_error_category : std::error_category
+    {
+        const char* name() const noexcept override 
+        {
+            return "chrony_error_category";
+        }
+
+        std::string message(int ev) const override
+        {
+            switch(static_cast<chrony_error>(ev))
+            {
+            case CHRONY_TRANSACTION_INSUFFICIENT_DATA:      return "Insufficient data while writing/reading request/response";
+            default:                                        return "Unrecognised error";
+            }
+        }
+    };
+
+    const chrony_error_category chrony_error_category_;
+
+    std::error_code make_error_code(chrony_error ec)
+    {
+        return {static_cast<int>(ec), chrony_error_category_};
+    }
+
+//----------------------------------------------------------------------------------------------------------------
+
     double chrony_float::to_double() const
     {
         constexpr uint32_t mask = (1u << 25) - 1;
@@ -85,6 +111,41 @@ namespace chrony
         byteswap(pay.root_delay);
         byteswap(pay.root_dispersion);
         byteswap(pay.last_update_interval);
+    }
+
+//----------------------------------------------------------------------------------------------------------------
+
+    void prepare_tracking_request (
+        request_header&     req, 
+        std::vector<char>&  buf,
+        std::mt19937&       rng
+    )
+    {
+        // Prepare request
+        req.version     = 6;
+        req.type        = 1;    // request
+        req.command     = tracking;
+        req.sequence    = std::uniform_int_distribution<uint16_t>{}(rng);
+        req.attempt     = 0;
+        byteswap(req);
+
+        // Resize buffer and serialize
+        buf.resize(sizeof(response_header) + sizeof(payload_tracking));
+        memcpy(&buf[0], &req, sizeof(req));
+    }
+
+    void deserialize_tracking_response (
+        response_header&            hdr, 
+        payload_tracking&           pay, 
+        const std::vector<char>&    buf
+    )
+    {
+        // Deserialise
+        size_t off{};
+        memcpy(&hdr, &buf[off], sizeof(hdr)); off += sizeof(hdr);
+        memcpy(&pay, &buf[off], sizeof(pay)); off += sizeof(pay);
+        byteswap(hdr);
+        byteswap(pay);
     }
 
 //----------------------------------------------------------------------------------------------------------------
