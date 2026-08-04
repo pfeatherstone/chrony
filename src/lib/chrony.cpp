@@ -54,6 +54,50 @@ namespace chrony
      
 //----------------------------------------------------------------------------------------------------------------
 
+    bool chrony_address::is_ipv4()    const { return family == 1; }
+    bool chrony_address::is_ipv6()    const { return family == 2; }
+    bool chrony_address::is_id()      const { return family == 3; }
+    bool chrony_address::is_ip()      const { return is_ipv4() || is_ipv6(); }
+
+    auto chrony_address::to_address() const -> std::optional<boost::asio::ip::address>
+    {
+        // IPv4
+        if (is_ipv4())
+        {
+            boost::asio::ip::address_v4::bytes_type bytes{};
+            memcpy(&bytes[0], addr, bytes.size());
+            return boost::asio::ip::address_v4{bytes};
+        }
+        // IPv6
+        else if (is_ipv6())
+        {
+            boost::asio::ip::address_v6::bytes_type bytes{};
+            memcpy(&bytes[0], addr, bytes.size());
+            return boost::asio::ip::address_v6{bytes};
+        }
+        else
+        {
+            return std::nullopt;
+        }
+    }
+
+    auto chrony_address::to_id() const -> std::optional<uint32_t>
+    {
+        // ID
+        if (family == is_id())
+        {
+            uint32_t network_id{};
+            memcpy(&network_id, &addr, 4);
+            return network_id;
+        }
+        else
+        {
+            return std::nullopt;
+        }
+    }
+
+//----------------------------------------------------------------------------------------------------------------
+
     std::string_view to_string(const leap_status status)
     {
         switch(status)
@@ -80,6 +124,19 @@ namespace chrony
         ts.nano     = ntohl(ts.nano);
     }
 
+    void byteswap(chrony_address& addr)
+    {
+        addr.family = ntohs(addr.family);
+
+        if (addr.is_id())
+        {
+            uint32_t network_id{};
+            memcpy(&network_id, &addr.addr, 4);
+            network_id = ntohl(network_id);
+            memcpy(&addr.addr, &network_id, 4);
+        }
+    }
+
     void byteswap(request_header& hdr)
     {
         hdr.command  = ntohs(hdr.command);
@@ -98,9 +155,9 @@ namespace chrony
     void byteswap(payload_tracking& pay)
     {
         pay.reference_id    = ntohl(pay.reference_id);
-        // pay.address
         pay.stratum         = ntohs(pay.stratum);
         pay.status          = static_cast<leap_status>(ntohs(static_cast<uint16_t>(pay.status)));
+        byteswap(pay.address);
         byteswap(pay.ref_time);
         byteswap(pay.current_correction);
         byteswap(pay.last_offset);
@@ -125,7 +182,7 @@ namespace chrony
         req.version     = 6;
         req.type        = 1;    // request
         req.command     = tracking;
-        req.sequence    = std::uniform_int_distribution<uint16_t>{}(rng);
+        req.sequence    = std::uniform_int_distribution<uint32_t>{}(rng);
         req.attempt     = 0;
         byteswap(req);
 

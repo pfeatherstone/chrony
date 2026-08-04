@@ -36,8 +36,9 @@ struct chrony_session
             return;
         }
 
-        fmt::println("reference_id        : {}", pay.reference_id);
-        // fmt::println("address             : {}", pay.address);
+        fmt::println("reference_id        : {:X}", pay.reference_id);
+        if (pay.address.is_ip())        fmt::println("address             : {}", pay.address.to_address().value().to_string());
+        else if (pay.address.is_id())   fmt::println("address             : {}", pay.address.to_id().value());
         fmt::println("stratum             : {}", pay.stratum);
         fmt::println("leap_status         : {}", to_string(pay.status));
         fmt::println("ref_time            : {}", pay.ref_time.to_time_point());

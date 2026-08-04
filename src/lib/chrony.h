@@ -5,6 +5,7 @@
 #include <random>
 #include <string_view>
 #include <vector>
+#include <optional>
 #include <boost/asio/ip/udp.hpp>
 #include <boost/asio/compose.hpp>
 
@@ -37,6 +38,23 @@ namespace chrony
         uint32_t nano{};
         auto to_time_point() const -> std::chrono::system_clock::time_point;
     };
+
+//----------------------------------------------------------------------------------------------------------------
+
+    struct chrony_address
+    {
+        uint8_t  addr[16];
+        uint16_t family{};
+        uint8_t  pad[2];
+        bool is_ipv4()    const;
+        bool is_ipv6()    const;
+        bool is_ip()      const;
+        bool is_id()      const;
+        auto to_address() const -> std::optional<boost::asio::ip::address>;
+        auto to_id()      const -> std::optional<uint32_t>;
+    };
+
+    static_assert(sizeof(chrony_address) == 20);
 
 //----------------------------------------------------------------------------------------------------------------
 
@@ -104,7 +122,7 @@ namespace chrony
     struct payload_tracking
     {
         uint32_t            reference_id{};
-        uint8_t             address[20];
+        chrony_address      address;
         uint16_t            stratum{};
         leap_status         status{};
         chrony_timestamp    ref_time{};
