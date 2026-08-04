@@ -194,7 +194,7 @@ namespace chrony
 
     template <
       class Executor, 
-      BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, const payload_tracking&)) CompletionToken = boost::asio::default_completion_token_t<Executor>
+      BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, payload_tracking)) CompletionToken = boost::asio::default_completion_token_t<Executor>
     >
     auto async_read_tracking(
         chrony_client<Executor>& sock,
@@ -271,14 +271,14 @@ namespace chrony
 
     template <
       class Executor, 
-      BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, const payload_tracking&)) CompletionToken
+      BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, payload_tracking)) CompletionToken
     >
     inline auto async_read_tracking(
         chrony_client<Executor>& sock,
         CompletionToken&&        token
     )
     {
-        return boost::asio::async_compose<CompletionToken, void(boost::system::error_code, const payload_tracking&)> (
+        return boost::asio::async_compose<CompletionToken, void(boost::system::error_code, payload_tracking)> (
             details::async_read_tracking_impl<Executor>{sock},
             token, sock
         );

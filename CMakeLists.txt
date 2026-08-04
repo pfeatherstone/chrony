@@ -22,33 +22,25 @@ CPMAddPackage(
           "BOOST_ASIO_DISABLE_BOOST_COROUTINE ON"
           "BOOST_INCLUDE_LIBRARIES asio\\\;program_options")
 
-CPMAddPackage("gh:fmtlib/fmt#12.2.0")
-
 # Options
 option(CHRONY_ENABLE_SANITIZERS "Build unit tests with sanitizers" OFF)
 
 # Lib
 add_library(chrony)
 add_library(chrony::chrony ALIAS chrony)
-
-target_sources(chrony PRIVATE
-  src/lib/chrony.cpp)
-
+target_sources(chrony PRIVATE src/lib/chrony.cpp)
 target_compile_features(chrony PUBLIC cxx_std_20)
-
-target_compile_options(chrony 
-  PRIVATE $<${IS_NOT_MSVC}:-Wall -Wextra -Wpedantic -Werror>)
+target_compile_options(chrony PRIVATE $<${IS_NOT_MSVC}:-Wall -Wextra -Wpedantic -Werror>)
+target_link_libraries(chrony PUBLIC Boost::asio)
 
 target_include_directories(chrony
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/lib>
   PUBLIC $<INSTALL_INTERFACE:include>)
 
-target_link_libraries(chrony PUBLIC Boost::asio)
-
 # Example
-add_executable(client_callback src/examples/client_callback.cpp)
-target_link_libraries(client_callback PRIVATE chrony::chrony fmt::fmt)
-target_link_options(client_callback PRIVATE $<$<CONFIG:Release>:-Wl,--gc-sections;-Wl,--as-needed;-s>)
+add_executable(client src/examples/client.cpp)
+target_link_libraries(client PRIVATE chrony::chrony)
+target_link_options(client PRIVATE $<$<CONFIG:Release>:-Wl,--gc-sections;-Wl,--as-needed;-s>)
 
 # # Test
 # add_executable(chrony_tests 
