@@ -41,7 +41,7 @@ awaitable<void> print_chrony_tracking(chrony_client<boost::asio::io_context::exe
 int main()
 {
     boost::asio::io_context ioc{1};
-    chrony_client<boost::asio::io_context::executor_type> sock(ioc.get_executor());
+    chrony_client<boost::asio::io_context::executor_type> sock(ioc);
     co_spawn(ioc, print_chrony_tracking(sock), detached);
     ioc.run();
 }

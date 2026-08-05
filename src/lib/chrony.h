@@ -16,7 +16,11 @@ namespace chrony
 
     enum chrony_error
     {
-        CHRONY_TRANSACTION_INSUFFICIENT_DATA = 1
+        CHRONY_TRANSACTION_INSUFFICIENT_DATA = 1,
+        CHRONY_BAD_PACKET_TYPE,
+        CHRONY_UNEXPECTED_COMMAND,
+        CHRONY_UNEXPECTED_FORMAT,
+        CHRONY_BAD_SEQUENCE_NUMBER
     };
 
     std::error_code make_error_code(chrony_error ec);
@@ -58,7 +62,15 @@ namespace chrony
 
 //----------------------------------------------------------------------------------------------------------------
 
-    enum request_command : uint16_t
+    enum class packet_type : uint8_t
+    {
+        request  = 1,
+        response = 2
+    };
+
+//----------------------------------------------------------------------------------------------------------------
+
+    enum class request_command : uint16_t
     {
         tracking    = 33,
         sources     = 14,
@@ -75,7 +87,14 @@ namespace chrony
 
 //----------------------------------------------------------------------------------------------------------------
 
-    enum leap_status : uint16_t
+    enum class reply_format : uint16_t
+    {
+        tracking = 5
+    };
+
+//----------------------------------------------------------------------------------------------------------------
+
+    enum class leap_status : uint16_t
     {
         normal = 0,
         insert_second,
@@ -141,17 +160,12 @@ namespace chrony
 
 //----------------------------------------------------------------------------------------------------------------
 
-    void prepare_tracking_request (
-        request_header&     req, 
-        std::vector<char>&  buf,
-        std::mt19937&       rng
-    );
-
-    void deserialize_tracking_response (
-        response_header&            reply, 
-        payload_tracking&           pay, 
-        const std::vector<char>&    buf
-    );
+    void byteswap(chrony_float& flt);
+    void byteswap(chrony_timestamp& ts);
+    void byteswap(chrony_address& addr);
+    void byteswap(request_header& hdr);
+    void byteswap(response_header& hdr);
+    void byteswap(payload_tracking& pay);
 
 //----------------------------------------------------------------------------------------------------------------
 
@@ -169,6 +183,13 @@ namespace chrony
         std::vector<char>   bufwrite;
         std::vector<char>   bufread;
 
+        const auto& next_layer()                const noexcept {return sock;}
+        auto&       next_layer()                      noexcept {return sock;}
+        auto&       lowest_layer()                    noexcept {return sock.lowest_layer();}
+        auto        get_executor()                    noexcept {return sock.get_executor();}
+        auto        get_cancellation_state()          noexcept {return boost::asio::get_associated_cancellation_slot(sock);}
+        auto        get_allocator()             const noexcept {return boost::asio::get_associated_allocator(sock);}
+
         chrony_client(const executor_type& ex)
         : sock(ex, udp::endpoint(udp::v4(), 0)),
           remote_endpoint(boost::asio::ip::make_address_v4("127.0.0.1"), 323),
@@ -176,18 +197,15 @@ namespace chrony
         {
         }
 
-        // template <typename ExecutionContext>
-        // chrony_client(ExecutionContext& context) requires std::is_convertible_v<ExecutionContext&, boost::asio::execution_context&>
-        // : chrony_client(executor_type(context.get_executor()))
-        // {
-        // }
-
-        const auto& next_layer()                const noexcept {return sock;}
-        auto&       next_layer()                      noexcept {return sock;}
-        auto&       lowest_layer()                    noexcept {return sock.lowest_layer();}
-        auto        get_executor()                    noexcept {return sock.get_executor();}
-        auto        get_cancellation_state()          noexcept {return boost::asio::get_associated_cancellation_slot(sock);}
-        auto        get_allocator()             const noexcept {return boost::asio::get_associated_allocator(sock);}
+        template <typename ExecutionContext>
+            requires (
+                std::is_convertible_v<ExecutionContext&, boost::asio::execution_context&> &&
+                std::constructible_from<executor_type, decltype(std::declval<ExecutionContext&>().get_executor())>
+            )
+        explicit chrony_client(ExecutionContext& context)                      
+        : chrony_client(executor_type(context.get_executor()))
+        {
+        }
     };
 
 //----------------------------------------------------------------------------------------------------------------
@@ -209,12 +227,23 @@ namespace chrony
 
     namespace details
     {
+
+//----------------------------------------------------------------------------------------------------------------
+
+        template<class Enum>
+        constexpr auto to_underlying(Enum value) noexcept
+        {
+            return static_cast<std::underlying_type_t<Enum>>(value);
+        }
+
+//----------------------------------------------------------------------------------------------------------------
+
         template<class Executor>
         struct async_read_tracking_impl
         {
-            chrony_client<Executor>& client;
-            request_header           req{};
-            enum {writing, reading, parsing} state{writing};
+            chrony_client<Executor>&            client;
+            uint32_t                            seq{};
+            enum {writing, reading, parsing}    state{writing};
 
             async_read_tracking_impl(chrony_client<Executor>& client_)
             : client{client_}
@@ -231,8 +260,19 @@ namespace chrony
                 else if (state == writing)
                 {
                     // Prepare request
-                    prepare_tracking_request(req, client.bufwrite, client.rand);
-                    client.bufread.resize(client.bufwrite.size());
+                    request_header req{};
+                    req.version     = 6;
+                    req.type        = to_underlying(packet_type::request);
+                    req.command     = to_underlying(request_command::tracking);
+                    req.sequence    = std::uniform_int_distribution<uint32_t>{}(client.rand);
+                    req.attempt     = 0;
+                    seq             = req.sequence;
+                    byteswap(req);
+
+                    // Resize buffer and serialize
+                    client.bufread.resize(sizeof(response_header) + sizeof(payload_tracking));
+                    client.bufwrite.resize(client.bufread.size());
+                    memcpy(&client.bufwrite[0], &req, sizeof(req));
 
                     // Send
                     state = reading;
@@ -254,20 +294,40 @@ namespace chrony
 
                 else if (state == parsing)
                 {
-                    if (ntransferred != client.bufwrite.size())
+                    if (ntransferred != client.bufread.size())
                         self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
                     
                     else
                     {
+                        // Deserialise
                         response_header  hdr{};
                         payload_tracking pay{};
-                        deserialize_tracking_response(hdr, pay, client.bufread);
-                        self.complete({}, pay);
+                        size_t off{};
+                        memcpy(&hdr, &client.bufread[off], sizeof(hdr)); off += sizeof(hdr);
+                        memcpy(&pay, &client.bufread[off], sizeof(pay)); off += sizeof(pay);
+                        byteswap(hdr);
+                        byteswap(pay);
+
+                        if      (hdr.type     != to_underlying(packet_type::response))
+                            self.complete(make_error_code(CHRONY_BAD_PACKET_TYPE), {});
+                        else if (hdr.command  != to_underlying(request_command::tracking))
+                            self.complete(make_error_code(CHRONY_UNEXPECTED_COMMAND), {});
+                        else if (hdr.format   != to_underlying(reply_format::tracking))
+                            self.complete(make_error_code(CHRONY_UNEXPECTED_FORMAT), {});
+                        else if (hdr.sequence != seq)
+                            self.complete(make_error_code(CHRONY_BAD_SEQUENCE_NUMBER), {});
+                        else
+                            self.complete({}, pay);
                     }
                 }
             }
         };
+    
+//----------------------------------------------------------------------------------------------------------------
+
     }
+
+//----------------------------------------------------------------------------------------------------------------
 
     template <
       class Executor, 

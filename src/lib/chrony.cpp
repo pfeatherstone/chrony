@@ -20,6 +20,10 @@ namespace chrony
             switch(static_cast<chrony_error>(ev))
             {
             case CHRONY_TRANSACTION_INSUFFICIENT_DATA:      return "Insufficient data while writing/reading request/response";
+            case CHRONY_BAD_PACKET_TYPE:                    return "Bad packet type.";
+            case CHRONY_UNEXPECTED_COMMAND:                 return "Received unexpected command type (e.g. not matching request)";
+            case CHRONY_UNEXPECTED_FORMAT:                  return "Received unexpected reply format type.";
+            case CHRONY_BAD_SEQUENCE_NUMBER:                return "Received non-matching sequence number in response";
             default:                                        return "Unrecognised error";
             }
         }
@@ -102,11 +106,11 @@ namespace chrony
     {
         switch(status)
         {
-            case normal             : return "Normal";
-            case insert_second      : return "Insert second";
-            case delete_second      : return "Delete second";
-            case not_synchronized   : return "Not synchronized";
-            default                 : return "Unknown";
+            case leap_status::normal            : return "Normal";
+            case leap_status::insert_second     : return "Insert second";
+            case leap_status::delete_second     : return "Delete second";
+            case leap_status::not_synchronized  : return "Not synchronized";
+            default                             : return "Unknown";
         }
     }
 
@@ -168,41 +172,6 @@ namespace chrony
         byteswap(pay.root_delay);
         byteswap(pay.root_dispersion);
         byteswap(pay.last_update_interval);
-    }
-
-//----------------------------------------------------------------------------------------------------------------
-
-    void prepare_tracking_request (
-        request_header&     req, 
-        std::vector<char>&  buf,
-        std::mt19937&       rng
-    )
-    {
-        // Prepare request
-        req.version     = 6;
-        req.type        = 1;    // request
-        req.command     = tracking;
-        req.sequence    = std::uniform_int_distribution<uint32_t>{}(rng);
-        req.attempt     = 0;
-        byteswap(req);
-
-        // Resize buffer and serialize
-        buf.resize(sizeof(response_header) + sizeof(payload_tracking));
-        memcpy(&buf[0], &req, sizeof(req));
-    }
-
-    void deserialize_tracking_response (
-        response_header&            hdr, 
-        payload_tracking&           pay, 
-        const std::vector<char>&    buf
-    )
-    {
-        // Deserialise
-        size_t off{};
-        memcpy(&hdr, &buf[off], sizeof(hdr)); off += sizeof(hdr);
-        memcpy(&pay, &buf[off], sizeof(pay)); off += sizeof(pay);
-        byteswap(hdr);
-        byteswap(pay);
     }
 
 //----------------------------------------------------------------------------------------------------------------

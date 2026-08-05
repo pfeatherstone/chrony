@@ -20,7 +20,7 @@ CPMAddPackage(
   OPTIONS "BUILD_SHARED_LIBS OFF" 
           "BOOST_ENABLE_CMAKE ON"
           "BOOST_ASIO_DISABLE_BOOST_COROUTINE ON"
-          "BOOST_INCLUDE_LIBRARIES asio\\\;program_options")
+          "BOOST_INCLUDE_LIBRARIES asio")
 
 # Options
 option(CHRONY_ENABLE_SANITIZERS "Build unit tests with sanitizers" OFF)
