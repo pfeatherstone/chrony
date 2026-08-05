@@ -24,6 +24,7 @@ namespace chrony
             case CHRONY_UNEXPECTED_COMMAND:                 return "Received unexpected command type (e.g. not matching request)";
             case CHRONY_UNEXPECTED_FORMAT:                  return "Received unexpected reply format type.";
             case CHRONY_BAD_SEQUENCE_NUMBER:                return "Received non-matching sequence number in response";
+            case CHRONY_BAD_REPLY_STATUS:                   return "Received bad status in reply";
             default:                                        return "Unrecognised error";
             }
         }
@@ -189,7 +190,7 @@ namespace chrony
 
     void byteswap(request_source_data& pay)
     {
-        pay.index = ntohs(pay.index);
+        pay.index = static_cast<int32_t>(htonl(static_cast<uint32_t>(pay.index)));
     }
 
     void byteswap(response_header& hdr)

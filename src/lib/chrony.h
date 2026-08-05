@@ -20,7 +20,8 @@ namespace chrony
         CHRONY_BAD_PACKET_TYPE,
         CHRONY_UNEXPECTED_COMMAND,
         CHRONY_UNEXPECTED_FORMAT,
-        CHRONY_BAD_SEQUENCE_NUMBER
+        CHRONY_BAD_SEQUENCE_NUMBER,
+        CHRONY_BAD_REPLY_STATUS
     };
 
     std::error_code make_error_code(chrony_error ec);
@@ -389,6 +390,8 @@ namespace chrony
                         self.complete(make_error_code(CHRONY_UNEXPECTED_FORMAT), {});
                     else if (hdr.sequence != seq)
                         self.complete(make_error_code(CHRONY_BAD_SEQUENCE_NUMBER), {});
+                    else if (hdr.status   != 0)
+                        self.complete(make_error_code(CHRONY_BAD_REPLY_STATUS), {});
                     else
                         self.complete({}, pay);
                 }
@@ -416,7 +419,7 @@ namespace chrony
         chrony_client<Executor>&            client;
         uint32_t                            seq{};
         std::vector<payload_source_data>    sources;
-        uint32_t                            count{};
+        int32_t                             count{};
         enum {
             writing_num, 
             reading_num, 
@@ -535,6 +538,8 @@ namespace chrony
                         self.complete(make_error_code(CHRONY_UNEXPECTED_FORMAT), {});
                     else if (hdr.sequence != seq)
                         self.complete(make_error_code(CHRONY_BAD_SEQUENCE_NUMBER), {});
+                    else if (hdr.status   != 0)
+                        self.complete(make_error_code(CHRONY_BAD_REPLY_STATUS), {});
                     else
                     {
                         if (pay.count > 0)
@@ -564,19 +569,17 @@ namespace chrony
             }
             else if (state == parsing_data)
             {
-                if (ntransferred != client.bufread.size())
+                response_header     hdr{};
+                payload_source_data pay{};
+                size_t off{};
+
+                if (ntransferred < sizeof(response_header))
                     self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
-                
+                    
                 else
                 {
-                    // Deserialise
-                    response_header     hdr{};
-                    payload_source_data pay{};
-                    size_t off{};
                     memcpy(&hdr, &client.bufread[off], sizeof(hdr)); off += sizeof(hdr);
-                    memcpy(&pay, &client.bufread[off], sizeof(pay)); off += sizeof(pay);
                     byteswap(hdr);
-                    byteswap(pay);
 
                     if      (hdr.type     != to_underlying(packet_type::response))
                         self.complete(make_error_code(CHRONY_BAD_PACKET_TYPE), {});
@@ -586,8 +589,16 @@ namespace chrony
                         self.complete(make_error_code(CHRONY_UNEXPECTED_FORMAT), {});
                     else if (hdr.sequence != seq)
                         self.complete(make_error_code(CHRONY_BAD_SEQUENCE_NUMBER), {});
+                    else if (hdr.status   != 0)
+                        self.complete(make_error_code(CHRONY_BAD_REPLY_STATUS), {});
+                    else if (ntransferred < (sizeof(response_header) + sizeof(payload_source_data)))
+                        self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
+                    
                     else
                     {
+                        memcpy(&pay, &client.bufread[off], sizeof(pay)); off += sizeof(pay);
+                        byteswap(pay);
+
                         sources[count++] = std::move(pay);
 
                         if (count < sources.size())
