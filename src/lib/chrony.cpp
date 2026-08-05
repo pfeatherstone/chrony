@@ -114,6 +114,45 @@ namespace chrony
         }
     }
 
+    std::string_view to_string(const source_mode mode)
+    {
+        switch (mode)
+        {
+        case source_mode::client            : return "server";
+        case source_mode::peer              : return "peer";
+        case source_mode::reference_clock   : return "refclock";
+        default                             : return "unknown";
+        }
+    }
+
+    std::string_view to_string(const source_state state)
+    {
+        switch (state)
+        {
+            case source_state::selected         : return "selected";
+            case source_state::nonselectable    : return "unusable";
+            case source_state::falseticker      : return "falseticker";
+            case source_state::jittery          : return "jittery";
+            case source_state::unselected       : return "combined";
+            case source_state::selectable       : return "selectable";
+            default                             : return "unknown";
+        }
+    }
+
+    char state_symbol(const source_state state)
+    {
+        switch (state)
+        {
+            case source_state::selected:      return '*';
+            case source_state::nonselectable: return '?';
+            case source_state::falseticker:   return 'x';
+            case source_state::jittery:       return '~';
+            case source_state::unselected:    return '+';
+            case source_state::selectable:    return '-';
+            default:                          return '?';
+        }
+    }
+
 //----------------------------------------------------------------------------------------------------------------
 
     void byteswap(chrony_float& flt)
@@ -148,6 +187,11 @@ namespace chrony
         hdr.sequence = ntohl(hdr.sequence);
     }
 
+    void byteswap(request_source_data& pay)
+    {
+        pay.index = ntohs(pay.index);
+    }
+
     void byteswap(response_header& hdr)
     {
         hdr.command     = ntohs(hdr.command);
@@ -172,6 +216,26 @@ namespace chrony
         byteswap(pay.root_delay);
         byteswap(pay.root_dispersion);
         byteswap(pay.last_update_interval);
+    }
+
+    void byteswap(payload_sources_num& pay)
+    {
+        pay.count = ntohl(pay.count);
+    }
+
+    void byteswap(payload_source_data& pay)
+    {
+        byteswap(pay.address);
+        pay.poll            = static_cast<int16_t>(ntohs(static_cast<uint16_t>(pay.poll)));
+        pay.stratum         = ntohs(pay.stratum);
+        pay.state           = static_cast<source_state>(ntohs(static_cast<std::uint16_t>(pay.state)));
+        pay.mode            = static_cast<source_mode>(ntohs(static_cast<std::uint16_t>(pay.mode)));
+        pay.flags           = ntohs(pay.flags);
+        pay.reachability    = ntohs(pay.reachability);
+        pay.since_sample    = ntohl(pay.since_sample);
+        byteswap(pay.original_measurement);
+        byteswap(pay.adjusted_measurement);
+        byteswap(pay.measurement_error);
     }
 
 //----------------------------------------------------------------------------------------------------------------
