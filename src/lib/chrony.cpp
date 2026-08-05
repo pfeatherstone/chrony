@@ -88,7 +88,7 @@ namespace chrony
     auto chrony_address::to_id() const -> std::optional<uint32_t>
     {
         // ID
-        if (family == is_id())
+        if (is_id())
         {
             uint32_t network_id{};
             memcpy(&network_id, &addr, 4);

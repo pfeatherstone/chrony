@@ -14,7 +14,7 @@ awaitable<void> print_chrony_tracking(chrony_client<boost::asio::io_context::exe
 {
     try
     {
-        const payload_tracking pay = co_await async_read_tracking(sock);
+        const payload_tracking pay = co_await sock.async_read_tracking();
 
         std::cout << "reference_id        : " << std::hex << std::uppercase << pay.reference_id << std::dec << '\n';
         if      (pay.address.is_ip()) std::cout << "address             : " << pay.address.to_address().value().to_string() << '\n';

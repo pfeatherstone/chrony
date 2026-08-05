@@ -170,19 +170,23 @@ namespace chrony
 //----------------------------------------------------------------------------------------------------------------
 
     template<class Executor>
-    struct chrony_client
+    class chrony_client
     {
+    public:
         using executor_type = Executor;
         using udp           = boost::asio::ip::udp;
         using udp_socket    = boost::asio::basic_datagram_socket<udp, Executor>;
         template <typename Executor1> struct rebind_executor { using other = chrony_client<Executor1>;};
 
+    private:
         udp_socket          sock;
-        udp::endpoint       remote_endpoint;
         std::mt19937        rand;
         std::vector<char>   bufwrite;
         std::vector<char>   bufread;
 
+        struct async_read_tracking_impl;
+
+    public:
         const auto& next_layer()                const noexcept {return sock;}
         auto&       next_layer()                      noexcept {return sock;}
         auto&       lowest_layer()                    noexcept {return sock.lowest_layer();}
@@ -191,10 +195,11 @@ namespace chrony
         auto        get_allocator()             const noexcept {return boost::asio::get_associated_allocator(sock);}
 
         chrony_client(const executor_type& ex)
-        : sock(ex, udp::endpoint(udp::v4(), 0)),
-          remote_endpoint(boost::asio::ip::make_address_v4("127.0.0.1"), 323),
-          rand(time(NULL))
+        : sock(ex),
+          rand(std::random_device{}())
         {
+            // This ensures kernel filters received packets so only datagrams from the connected peer are delivered.
+            sock.connect({boost::asio::ip::make_address_v4("127.0.0.1"), 323});
         }
 
         template <typename ExecutionContext>
@@ -206,18 +211,12 @@ namespace chrony
         : chrony_client(executor_type(context.get_executor()))
         {
         }
+
+        template<BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, payload_tracking)) CompletionToken = boost::asio::default_completion_token_t<Executor>>
+        auto async_read_tracking (
+            CompletionToken&& token = boost::asio::default_completion_token_t<Executor>()
+        );
     };
-
-//----------------------------------------------------------------------------------------------------------------
-
-    template <
-      class Executor, 
-      BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, payload_tracking)) CompletionToken = boost::asio::default_completion_token_t<Executor>
-    >
-    auto async_read_tracking(
-        chrony_client<Executor>& sock,
-        CompletionToken&&        token = boost::asio::default_completion_token_t<Executor>()
-    );
     
 //----------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------
@@ -227,120 +226,113 @@ namespace chrony
 
     namespace details
     {
-
-//----------------------------------------------------------------------------------------------------------------
-
         template<class Enum>
         constexpr auto to_underlying(Enum value) noexcept
         {
             return static_cast<std::underlying_type_t<Enum>>(value);
         }
-
-//----------------------------------------------------------------------------------------------------------------
-
-        template<class Executor>
-        struct async_read_tracking_impl
-        {
-            chrony_client<Executor>&            client;
-            uint32_t                            seq{};
-            enum {writing, reading, parsing}    state{writing};
-
-            async_read_tracking_impl(chrony_client<Executor>& client_)
-            : client{client_}
-            {
-            }
-            
-            template<class Self>
-            void operator()(Self& self, boost::system::error_code error = {}, std::size_t ntransferred = 0)
-            {
-                // IO error
-                if (error)
-                    self.complete(error, {});
-
-                else if (state == writing)
-                {
-                    // Prepare request
-                    request_header req{};
-                    req.version     = 6;
-                    req.type        = to_underlying(packet_type::request);
-                    req.command     = to_underlying(request_command::tracking);
-                    req.sequence    = std::uniform_int_distribution<uint32_t>{}(client.rand);
-                    req.attempt     = 0;
-                    seq             = req.sequence;
-                    byteswap(req);
-
-                    // Resize buffer and serialize
-                    client.bufread.resize(sizeof(response_header) + sizeof(payload_tracking));
-                    client.bufwrite.resize(client.bufread.size());
-                    memcpy(&client.bufwrite[0], &req, sizeof(req));
-
-                    // Send
-                    state = reading;
-                    client.sock.async_send_to(boost::asio::buffer(client.bufwrite), client.remote_endpoint, std::move(self));
-                }
-
-                else if (state == reading)
-                {
-                    if (ntransferred != client.bufwrite.size())
-                        self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
-
-                    else
-                    {
-                        // Read
-                        state = parsing;
-                        client.sock.async_receive_from(boost::asio::buffer(client.bufread), client.remote_endpoint, std::move(self));
-                    }
-                }
-
-                else if (state == parsing)
-                {
-                    if (ntransferred != client.bufread.size())
-                        self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
-                    
-                    else
-                    {
-                        // Deserialise
-                        response_header  hdr{};
-                        payload_tracking pay{};
-                        size_t off{};
-                        memcpy(&hdr, &client.bufread[off], sizeof(hdr)); off += sizeof(hdr);
-                        memcpy(&pay, &client.bufread[off], sizeof(pay)); off += sizeof(pay);
-                        byteswap(hdr);
-                        byteswap(pay);
-
-                        if      (hdr.type     != to_underlying(packet_type::response))
-                            self.complete(make_error_code(CHRONY_BAD_PACKET_TYPE), {});
-                        else if (hdr.command  != to_underlying(request_command::tracking))
-                            self.complete(make_error_code(CHRONY_UNEXPECTED_COMMAND), {});
-                        else if (hdr.format   != to_underlying(reply_format::tracking))
-                            self.complete(make_error_code(CHRONY_UNEXPECTED_FORMAT), {});
-                        else if (hdr.sequence != seq)
-                            self.complete(make_error_code(CHRONY_BAD_SEQUENCE_NUMBER), {});
-                        else
-                            self.complete({}, pay);
-                    }
-                }
-            }
-        };
-    
-//----------------------------------------------------------------------------------------------------------------
-
     }
 
 //----------------------------------------------------------------------------------------------------------------
 
-    template <
-      class Executor, 
-      BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, payload_tracking)) CompletionToken
-    >
-    inline auto async_read_tracking(
-        chrony_client<Executor>& sock,
-        CompletionToken&&        token
+    template<class Executor>
+    struct chrony_client<Executor>::async_read_tracking_impl
+    {
+        chrony_client<Executor>&            client;
+        uint32_t                            seq{};
+        enum {writing, reading, parsing}    state{writing};
+
+        async_read_tracking_impl(chrony_client<Executor>& client_)
+        : client{client_}
+        {
+        }
+        
+        template<class Self>
+        void operator()(Self& self, boost::system::error_code error = {}, std::size_t ntransferred = 0)
+        {
+            using details::to_underlying;
+
+            // IO error
+            if (error)
+                self.complete(error, {});
+
+            else if (state == writing)
+            {
+                // Prepare request
+                request_header req{};
+                req.version     = 6;
+                req.type        = to_underlying(packet_type::request);
+                req.command     = to_underlying(request_command::tracking);
+                req.sequence    = std::uniform_int_distribution<uint32_t>{}(client.rand);
+                req.attempt     = 0;
+                seq             = req.sequence;
+                byteswap(req);
+
+                // Resize buffer and serialize
+                client.bufread.resize(sizeof(response_header) + sizeof(payload_tracking));
+                client.bufwrite.resize(client.bufread.size());
+                memcpy(&client.bufwrite[0], &req, sizeof(req));
+
+                // Send
+                state = reading;
+                client.sock.async_send(boost::asio::buffer(client.bufwrite), std::move(self));
+            }
+
+            else if (state == reading)
+            {
+                if (ntransferred != client.bufwrite.size())
+                    self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
+
+                else
+                {
+                    // Read
+                    state = parsing;
+                    client.sock.async_receive(boost::asio::buffer(client.bufread), std::move(self));
+                }
+            }
+
+            else if (state == parsing)
+            {
+                if (ntransferred != client.bufread.size())
+                    self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
+                
+                else
+                {
+                    // Deserialise
+                    response_header  hdr{};
+                    payload_tracking pay{};
+                    size_t off{};
+                    memcpy(&hdr, &client.bufread[off], sizeof(hdr)); off += sizeof(hdr);
+                    memcpy(&pay, &client.bufread[off], sizeof(pay)); off += sizeof(pay);
+                    byteswap(hdr);
+                    byteswap(pay);
+
+                    if      (hdr.type     != to_underlying(packet_type::response))
+                        self.complete(make_error_code(CHRONY_BAD_PACKET_TYPE), {});
+                    else if (hdr.command  != to_underlying(request_command::tracking))
+                        self.complete(make_error_code(CHRONY_UNEXPECTED_COMMAND), {});
+                    else if (hdr.format   != to_underlying(reply_format::tracking))
+                        self.complete(make_error_code(CHRONY_UNEXPECTED_FORMAT), {});
+                    else if (hdr.sequence != seq)
+                        self.complete(make_error_code(CHRONY_BAD_SEQUENCE_NUMBER), {});
+                    else
+                        self.complete({}, pay);
+                }
+            }
+        }
+    };
+
+//----------------------------------------------------------------------------------------------------------------
+
+    template<class Executor>
+    template<BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, payload_tracking)) CompletionToken>
+    inline auto chrony_client<Executor>::async_read_tracking(
+        CompletionToken&& token
     )
     {
         return boost::asio::async_compose<CompletionToken, void(boost::system::error_code, payload_tracking)> (
-            details::async_read_tracking_impl<Executor>{sock},
-            token, sock
+            async_read_tracking_impl{*this},
+            token, *this
         );
     }
 
