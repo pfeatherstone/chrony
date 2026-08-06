@@ -17,6 +17,7 @@ namespace chrony
     enum chrony_error
     {
         CHRONY_TRANSACTION_INSUFFICIENT_DATA = 1,
+        CHRONY_BAD_VERSION,
         CHRONY_BAD_PACKET_TYPE,
         CHRONY_UNEXPECTED_COMMAND,
         CHRONY_UNEXPECTED_FORMAT,
@@ -210,7 +211,7 @@ namespace chrony
     struct payload_source_data
     {
         chrony_address  address{};
-        int16_t         poll{};
+        int16_t         poll_base2{};
         uint16_t        stratum{};
         source_state    state{};
         source_mode     mode{};
@@ -220,6 +221,7 @@ namespace chrony
         chrony_float    original_measurement{};
         chrony_float    adjusted_measurement{};
         chrony_float    measurement_error{};
+        std::chrono::microseconds poll() const;
     };
 
     static_assert(sizeof(payload_source_data) == 48);
@@ -299,16 +301,45 @@ namespace chrony
 //----------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------
 
-    namespace details
+    template<class Enum>
+    constexpr auto to_underlying(Enum value) noexcept
     {
-        template<class Enum>
-        constexpr auto to_underlying(Enum value) noexcept
-        {
-            return static_cast<std::underlying_type_t<Enum>>(value);
-        }
+        return static_cast<std::underlying_type_t<Enum>>(value);
     }
 
 //----------------------------------------------------------------------------------------------------------------
+
+    inline std::error_code parse_response_header (
+        response_header&        hdr, 
+        const request_command   cmd, 
+        const reply_format      fmt, 
+        const uint32_t          seq, 
+        std::span<const char>   buf, 
+        size_t&                 consumed
+    )
+    {
+        if (buf.size() < sizeof(hdr))
+            return make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA);
+
+        memcpy(&hdr, &buf[0], sizeof(hdr)); 
+        byteswap(hdr);
+        consumed += sizeof(hdr);
+
+        if      (hdr.version  != 6)
+            return make_error_code(CHRONY_BAD_VERSION);
+        else if (hdr.type     != to_underlying(packet_type::response))
+            return make_error_code(CHRONY_BAD_PACKET_TYPE);
+        else if (hdr.command  != to_underlying(cmd))
+            return make_error_code(CHRONY_UNEXPECTED_COMMAND);
+        else if (hdr.format   != to_underlying(fmt))
+            return make_error_code(CHRONY_UNEXPECTED_FORMAT);
+        else if (hdr.sequence != seq)
+            return make_error_code(CHRONY_BAD_SEQUENCE_NUMBER);
+        else if (hdr.status   != 0)
+            return make_error_code(CHRONY_BAD_REPLY_STATUS);
+
+        return {};
+    }
 
     template<class Executor>
     struct chrony_client<Executor>::async_read_tracking_impl
@@ -321,36 +352,40 @@ namespace chrony
         : client{client_}
         {
         }
-        
+
+        template<class Self>
+        void send_tracking_req(Self& self)
+        {
+            // Prepare request
+            request_header req{};
+            req.version     = 6;
+            req.type        = to_underlying(packet_type::request);
+            req.command     = to_underlying(request_command::tracking);
+            req.sequence    = std::uniform_int_distribution<uint32_t>{}(client.rand);
+            req.attempt     = 0;
+            seq             = req.sequence;
+            byteswap(req);
+
+            // Resize buffer and serialize
+            client.bufread.resize(sizeof(response_header) + sizeof(payload_tracking));
+            client.bufwrite.resize(client.bufread.size());
+            memcpy(&client.bufwrite[0], &req, sizeof(req));
+
+            // Send
+            client.sock.async_send(boost::asio::buffer(client.bufwrite), std::move(self));
+        }
+
         template<class Self>
         void operator()(Self& self, boost::system::error_code error = {}, std::size_t ntransferred = 0)
         {
-            using details::to_underlying;
-
             // IO error
             if (error)
                 self.complete(error, {});
 
             else if (state == writing)
             {
-                // Prepare request
-                request_header req{};
-                req.version     = 6;
-                req.type        = to_underlying(packet_type::request);
-                req.command     = to_underlying(request_command::tracking);
-                req.sequence    = std::uniform_int_distribution<uint32_t>{}(client.rand);
-                req.attempt     = 0;
-                seq             = req.sequence;
-                byteswap(req);
-
-                // Resize buffer and serialize
-                client.bufread.resize(sizeof(response_header) + sizeof(payload_tracking));
-                client.bufwrite.resize(client.bufread.size());
-                memcpy(&client.bufwrite[0], &req, sizeof(req));
-
-                // Send
                 state = reading;
-                client.sock.async_send(boost::asio::buffer(client.bufwrite), std::move(self));
+                send_tracking_req(self);
             }
 
             else if (state == reading)
@@ -368,33 +403,31 @@ namespace chrony
 
             else if (state == parsing)
             {
-                if (ntransferred != client.bufread.size())
-                    self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
-                
-                else
-                {
-                    // Deserialise
-                    response_header  hdr{};
-                    payload_tracking pay{};
-                    size_t off{};
-                    memcpy(&hdr, &client.bufread[off], sizeof(hdr)); off += sizeof(hdr);
-                    memcpy(&pay, &client.bufread[off], sizeof(pay)); off += sizeof(pay);
-                    byteswap(hdr);
-                    byteswap(pay);
+                std::span<const char> buf(&client.bufread[0], ntransferred);
 
-                    if      (hdr.type     != to_underlying(packet_type::response))
-                        self.complete(make_error_code(CHRONY_BAD_PACKET_TYPE), {});
-                    else if (hdr.command  != to_underlying(request_command::tracking))
-                        self.complete(make_error_code(CHRONY_UNEXPECTED_COMMAND), {});
-                    else if (hdr.format   != to_underlying(reply_format::tracking))
-                        self.complete(make_error_code(CHRONY_UNEXPECTED_FORMAT), {});
-                    else if (hdr.sequence != seq)
-                        self.complete(make_error_code(CHRONY_BAD_SEQUENCE_NUMBER), {});
-                    else if (hdr.status   != 0)
-                        self.complete(make_error_code(CHRONY_BAD_REPLY_STATUS), {});
-                    else
-                        self.complete({}, pay);
+                // Deserialize header
+                response_header  hdr{};
+                payload_tracking pay{};
+                size_t off{};
+
+                auto ec = parse_response_header(hdr, request_command::tracking, reply_format::tracking, seq, buf, off);
+
+                if (ec)
+                {
+                    self.complete(ec, {});
+                    return;
                 }
+
+                // Deserialize payload
+                if (buf.size() < (sizeof(hdr)+sizeof(pay)))
+                {
+                    self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
+                    return;
+                }
+                
+                memcpy(&pay, &buf[off], sizeof(pay));
+                byteswap(pay);
+                self.complete({}, pay);
             }
         }
     };
@@ -416,17 +449,13 @@ namespace chrony
     template<class Executor>
     struct chrony_client<Executor>::async_read_sources_impl
     {
+        enum class state_t {writing_num, reading, parsing_num, parsing_data};
         chrony_client<Executor>&            client;
         uint32_t                            seq{};
         std::vector<payload_source_data>    sources;
         int32_t                             count{};
-        enum {
-            writing_num, 
-            reading_num, 
-            parsing_num,
-            reading_data,
-            parsing_data
-        } state{writing_num};
+        state_t                             state{state_t::writing_num};
+        state_t                             next{};
 
         async_read_sources_impl(chrony_client<Executor>& client_)
         : client{client_}
@@ -436,8 +465,6 @@ namespace chrony
         template<class Self>
         void send_source_count_req(Self& self)
         {
-            using details::to_underlying;
-
             // Prepare request
             request_header req{};
             req.version     = 6;
@@ -460,8 +487,6 @@ namespace chrony
         template<class Self>
         void send_source_data_req(Self& self)
         {
-            using details::to_underlying;
-
             // Prepare request
             request_header      req{};
             request_source_data pay{};
@@ -489,19 +514,18 @@ namespace chrony
         template<class Self>
         void operator()(Self& self, boost::system::error_code error = {}, std::size_t ntransferred = 0)
         {
-            using details::to_underlying;
-
             // IO error
             if (error)
                 self.complete(error, {});
 
-            else if (state == writing_num)
+            else if (state == state_t::writing_num)
             {
-                state = reading_num;
+                state = state_t::reading;
+                next  = state_t::parsing_num;
                 send_source_count_req(self);
             }
 
-            else if (state == reading_num)
+            else if (state == state_t::reading)
             {
                 if (ntransferred != client.bufwrite.size())
                     self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
@@ -509,108 +533,87 @@ namespace chrony
                 else
                 {
                     // Read
-                    state = parsing_num;
+                    state = next;
                     client.sock.async_receive(boost::asio::buffer(client.bufread), std::move(self));
                 }
             }
 
-            else if (state == parsing_num)
+            else if (state == state_t::parsing_num)
             {
-                if (ntransferred != client.bufread.size())
+                std::span<const char> buf(&client.bufread[0], ntransferred);
+
+                // Deserialize header
+                response_header     hdr{};
+                payload_sources_num pay{};
+                size_t off{};
+
+                auto ec = parse_response_header(hdr, request_command::source_num, reply_format::source_num, seq, buf, off);
+
+                if (ec)
+                {
+                    self.complete(ec, {});
+                    return;
+                }
+
+                // Deserialize payload
+                if (buf.size() < (sizeof(hdr)+sizeof(pay)))
+                {
                     self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
+                    return;
+                }
                 
+                memcpy(&pay, &buf[off], sizeof(pay));
+                byteswap(pay);
+
+                if (pay.count > 0)
+                {
+                    sources.resize(pay.count);
+                    state = state_t::reading;
+                    next  = state_t::parsing_data;
+                    send_source_data_req(self);
+                }
                 else
                 {
-                    // Deserialise
-                    response_header     hdr{};
-                    payload_sources_num pay{};
-                    size_t off{};
-                    memcpy(&hdr, &client.bufread[off], sizeof(hdr)); off += sizeof(hdr);
-                    memcpy(&pay, &client.bufread[off], sizeof(pay)); off += sizeof(pay);
-                    byteswap(hdr);
-                    byteswap(pay);
-
-                    if      (hdr.type     != to_underlying(packet_type::response))
-                        self.complete(make_error_code(CHRONY_BAD_PACKET_TYPE), {});
-                    else if (hdr.command  != to_underlying(request_command::source_num))
-                        self.complete(make_error_code(CHRONY_UNEXPECTED_COMMAND), {});
-                    else if (hdr.format   != to_underlying(reply_format::source_num))
-                        self.complete(make_error_code(CHRONY_UNEXPECTED_FORMAT), {});
-                    else if (hdr.sequence != seq)
-                        self.complete(make_error_code(CHRONY_BAD_SEQUENCE_NUMBER), {});
-                    else if (hdr.status   != 0)
-                        self.complete(make_error_code(CHRONY_BAD_REPLY_STATUS), {});
-                    else
-                    {
-                        if (pay.count > 0)
-                        {
-                            sources.resize(pay.count);
-                            state = reading_data;
-                            send_source_data_req(self);
-                        }
-                        else
-                        {
-                            self.complete({}, std::move(sources));
-                        }
-                    }
+                    self.complete({}, std::move(sources));
                 }
             }
-            else if (state == reading_data)
+            else if (state == state_t::parsing_data)
             {
-                if (ntransferred != client.bufwrite.size())
-                    self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
+                std::span<const char> buf(&client.bufread[0], ntransferred);
 
-                else
-                {
-                    // Read
-                    state = parsing_data;
-                    client.sock.async_receive(boost::asio::buffer(client.bufread), std::move(self));
-                }
-            }
-            else if (state == parsing_data)
-            {
+                // Deserialize header
                 response_header     hdr{};
                 payload_source_data pay{};
                 size_t off{};
 
-                if (ntransferred < sizeof(response_header))
+                auto ec = parse_response_header(hdr, request_command::source_data, reply_format::source_data, seq, buf, off);
+
+                if (ec)
+                {
+                    self.complete(ec, {});
+                    return;
+                }
+
+                // Deserialize payload
+                if (buf.size() < (sizeof(hdr)+sizeof(pay)))
+                {
                     self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
-                    
+                    return;
+                }
+                
+                memcpy(&pay, &buf[off], sizeof(pay));
+                byteswap(pay);
+
+                sources[count++] = std::move(pay);
+
+                if (count < sources.size())
+                {
+                    state = state_t::reading;
+                    send_source_data_req(self);
+                }
                 else
                 {
-                    memcpy(&hdr, &client.bufread[off], sizeof(hdr)); off += sizeof(hdr);
-                    byteswap(hdr);
-
-                    if      (hdr.type     != to_underlying(packet_type::response))
-                        self.complete(make_error_code(CHRONY_BAD_PACKET_TYPE), {});
-                    else if (hdr.command  != to_underlying(request_command::source_data))
-                        self.complete(make_error_code(CHRONY_UNEXPECTED_COMMAND), {});
-                    else if (hdr.format   != to_underlying(reply_format::source_data))
-                        self.complete(make_error_code(CHRONY_UNEXPECTED_FORMAT), {});
-                    else if (hdr.sequence != seq)
-                        self.complete(make_error_code(CHRONY_BAD_SEQUENCE_NUMBER), {});
-                    else if (hdr.status   != 0)
-                        self.complete(make_error_code(CHRONY_BAD_REPLY_STATUS), {});
-                    else if (ntransferred < (sizeof(response_header) + sizeof(payload_source_data)))
-                        self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
-                    
-                    else
-                    {
-                        memcpy(&pay, &client.bufread[off], sizeof(pay)); off += sizeof(pay);
-                        byteswap(pay);
-
-                        sources[count++] = std::move(pay);
-
-                        if (count < sources.size())
-                        {
-                            state = reading_data;
-                            send_source_data_req(self);
-                        }
-                        else
-                        {
-                            self.complete({}, std::move(sources));
-                        }
-                    }
+                    self.complete({}, std::move(sources));
                 }
             }
         }

@@ -20,6 +20,7 @@ namespace chrony
             switch(static_cast<chrony_error>(ev))
             {
             case CHRONY_TRANSACTION_INSUFFICIENT_DATA:      return "Insufficient data while writing/reading request/response";
+            case CHRONY_BAD_VERSION:                        return "Bad version (!6)";
             case CHRONY_BAD_PACKET_TYPE:                    return "Bad packet type.";
             case CHRONY_UNEXPECTED_COMMAND:                 return "Received unexpected command type (e.g. not matching request)";
             case CHRONY_UNEXPECTED_FORMAT:                  return "Received unexpected reply format type.";
@@ -156,6 +157,13 @@ namespace chrony
 
 //----------------------------------------------------------------------------------------------------------------
 
+    microseconds payload_source_data::poll() const
+    {
+        return microseconds(static_cast<int64_t>(std::ldexp(1e6, poll_base2)));
+    }
+
+//----------------------------------------------------------------------------------------------------------------
+
     void byteswap(chrony_float& flt)
     {
         flt.data = ntohl(flt.data);
@@ -227,7 +235,7 @@ namespace chrony
     void byteswap(payload_source_data& pay)
     {
         byteswap(pay.address);
-        pay.poll            = static_cast<int16_t>(ntohs(static_cast<uint16_t>(pay.poll)));
+        pay.poll_base2      = static_cast<int16_t>(ntohs(static_cast<uint16_t>(pay.poll_base2)));
         pay.stratum         = ntohs(pay.stratum);
         pay.state           = static_cast<source_state>(ntohs(static_cast<std::uint16_t>(pay.state)));
         pay.mode            = static_cast<source_mode>(ntohs(static_cast<std::uint16_t>(pay.mode)));

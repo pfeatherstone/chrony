@@ -22,6 +22,8 @@ CPMAddPackage(
           "BOOST_ASIO_DISABLE_BOOST_COROUTINE ON"
           "BOOST_INCLUDE_LIBRARIES asio")
 
+CPMAddPackage("gh:fmtlib/fmt#12.2.0")
+
 # Options
 option(CHRONY_ENABLE_SANITIZERS "Build unit tests with sanitizers" OFF)
 
@@ -39,7 +41,7 @@ target_include_directories(chrony
 
 # Example
 add_executable(client src/examples/client.cpp)
-target_link_libraries(client PRIVATE chrony::chrony)
+target_link_libraries(client PRIVATE chrony::chrony fmt::fmt)
 target_link_options(client PRIVATE $<$<CONFIG:Release>:-Wl,--gc-sections;-Wl,--as-needed;-s>)
 
 # # Test

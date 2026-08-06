@@ -1,29 +1,22 @@
 #include <random>
 #include <functional>
-#include <iostream>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
+#include <fmt/chrono.h>
+#include <fmt/base.h>
 #include "chrony.h"
 
+using namespace std::chrono;
 using namespace chrony;
 using boost::asio::detached;
 template<class T> using awaitable = boost::asio::awaitable<T, boost::asio::io_context::executor_type>;
 
 std::string format_address(const chrony_address& address)
 {
-    if (const auto ip = address.to_address())
-        return ip->to_string();
-
-    if (const auto id = address.to_id())
-    {
-        std::ostringstream stream;
-        stream << "ID:" << std::hex << std::uppercase
-               << std::setw(8) << std::setfill('0') << *id;
-        return stream.str();
-    }
-
-    return "<unspecified>";
+    if (const auto ip = address.to_address()) return ip->to_string();
+    if (const auto id = address.to_id())      return fmt::format("ID:{:08X}", *id);
+    else                                      return "<unspecified>";
 }
 
 awaitable<void> print_chrony_tracking(chrony_client<boost::asio::io_context::executor_type>& sock)
@@ -32,26 +25,26 @@ awaitable<void> print_chrony_tracking(chrony_client<boost::asio::io_context::exe
     {
         const payload_tracking pay = co_await sock.async_read_tracking();
 
-        std::cout << "Tracking results:\n";
-        std::cout << "  reference_id        : " << std::hex << std::uppercase << pay.reference_id << std::dec << '\n';
-        std::cout << "  address             : " << format_address(pay.address) << '\n';
-        std::cout << "  stratum             : " << pay.stratum << '\n';
-        std::cout << "  leap_status         : " << to_string(pay.status) << '\n';
-        std::cout << "  ref_time            : " << pay.ref_time.to_time_point() << '\n';
-        std::cout << "  current_correction  : " << pay.current_correction.to_double() << '\n';
-        std::cout << "  last_offset         : " << pay.last_offset.to_double() << '\n';
-        std::cout << "  rms_offset          : " << pay.rms_offset.to_double() << '\n';
-        std::cout << "  freq_offset_ppm     : " << pay.freq_offset_ppm.to_double() << '\n';
-        std::cout << "  freq_residual_ppm   : " << pay.freq_residual_ppm.to_double() << '\n';
-        std::cout << "  skew_ppm            : " << pay.skew_ppm.to_double() << '\n';
-        std::cout << "  root_delay          : " << pay.root_delay.to_double() << '\n';
-        std::cout << "  root_dispersion     : " << pay.root_dispersion.to_double() << '\n';
-        std::cout << "  last_update_interval: " << pay.last_update_interval.to_double() << '\n';
-        std::cout << '\n';
+        fmt::println("Tracking results:");
+        fmt::println("  reference_id        : {:08X}", pay.reference_id);
+        fmt::println("  address             : {}", format_address(pay.address));
+        fmt::println("  stratum             : {}", pay.stratum);
+        fmt::println("  leap_status         : {}", to_string(pay.status));
+        fmt::println("  ref_time            : {}", pay.ref_time.to_time_point());
+        fmt::println("  current_correction  : {}", pay.current_correction.to_double());
+        fmt::println("  last_offset         : {}", pay.last_offset.to_double());
+        fmt::println("  rms_offset          : {}", pay.rms_offset.to_double());
+        fmt::println("  freq_offset_ppm     : {}", pay.freq_offset_ppm.to_double());
+        fmt::println("  freq_residual_ppm   : {}", pay.freq_residual_ppm.to_double());
+        fmt::println("  skew_ppm            : {}", pay.skew_ppm.to_double());
+        fmt::println("  root_delay          : {}", pay.root_delay.to_double());
+        fmt::println("  root_dispersion     : {}", pay.root_dispersion.to_double());
+        fmt::println("  last_update_interval: {}", pay.last_update_interval.to_double());
+        fmt::println("");
     }
     catch(const std::exception& e)
     {
-        std::cerr << "Error : " << e.what() << '\n';
+        fmt::println(stderr, "Error: {}", e.what());
     }
 }
 
@@ -60,71 +53,31 @@ awaitable<void> print_chrony_sources(chrony_client<boost::asio::io_context::exec
     try
     {
         const std::vector<payload_source_data> sources = co_await sock.async_read_sources();
-        std::cout
-            << "Chrony sources: " << sources.size() << "\n\n"
-            << std::left
-            << std::setw(3)  << "St"
-            << std::setw(40) << "Address"
-            << std::setw(10) << "Mode"
-            << std::setw(8)  << "Stratum"
-            << std::setw(10) << "Poll(s)"
-            << std::setw(8)  << "Reach"
-            << std::setw(10) << "Age(s)"
-            << std::setw(16) << "Offset(s)"
-            << std::setw(16) << "Original(s)"
-            << "Error(s)"
-            << '\n';
+        
+        fmt::println("Chrony sources: {}\n", sources.size());
 
-        std::cout << std::string(140, '-') << '\n';
+        fmt::println("{:<3} {:<20} {:<9} {:>7} {:>9} {:>7} {:>9} {:>10} {:>12} {:>14}",
+            "St", "Address", "Mode", "Stratum", "Poll(s)", "Reach", "Age(s)", "Offset(s)", "Original(s)", "Error(s)");
 
         for (const auto& source : sources)
         {
-            const double poll_seconds = std::ldexp(1.0, source.poll);
-
-            std::ostringstream reachability;
-            reachability << std::oct << source.reachability;
-
-            std::cout
-                << std::left
-                << std::setw(3)
-                << state_symbol(source.state)
-
-                << std::setw(40)
-                << format_address(source.address)
-
-                << std::setw(10)
-                << to_string(source.mode)
-
-                << std::setw(8)
-                << source.stratum
-
-                << std::setw(10)
-                << poll_seconds
-
-                << std::setw(8)
-                << reachability.str()
-
-                << std::setw(10)
-                << source.since_sample
-
-                << std::scientific
-                << std::setprecision(6)
-
-                << std::setw(16)
-                << source.adjusted_measurement.to_double()
-
-                << std::setw(16)
-                << source.original_measurement.to_double()
-
-                << source.measurement_error.to_double()
-
-                << std::defaultfloat
-                << '\n';
+            fmt::println("{:<3} {:<20} {:<9} {:>7} {:>9} {:>7o} {:>9} {:+8}us [{:+8}us] +/- {:>8}us",
+                state_symbol(source.state),
+                format_address(source.address),
+                to_string(source.mode),
+                source.stratum,
+                duration_cast<seconds>(source.poll()).count(),
+                source.reachability,
+                source.since_sample,
+                static_cast<int64_t>(source.adjusted_measurement.to_double()*1e6),
+                static_cast<int64_t>(source.original_measurement.to_double()*1e6),
+                static_cast<int64_t>(source.measurement_error.to_double()*1e6)
+            );
         }
     }
-    catch(const std::exception& e)
+    catch (const std::exception& e)
     {
-        std::cerr << "Error : " << e.what() << '\n';
+        fmt::println(stderr, "Error: {}", e.what());
     }
 }
 
