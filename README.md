@@ -22,7 +22,7 @@ Example code:
 
 ```cpp
 
-awaitable<void> print_chrony_tracking(chrony_client<boost::asio::io_context::executor_type>& sock)
+awaitable<void> print_chrony_tracking(chrony_client& sock)
 {
     try
     {
@@ -30,7 +30,7 @@ awaitable<void> print_chrony_tracking(chrony_client<boost::asio::io_context::exe
 
         fmt::println("Tracking results:");
         fmt::println("  reference_id        : {:08X}", pay.reference_id);
-        fmt::println("  address             : {}", pay.address.to_address().to_string());
+        fmt::println("  address             : {}", pay.address.to_address().value().to_string());
         fmt::println("  stratum             : {}", pay.stratum);
         fmt::println("  leap_status         : {}", to_string(pay.status));
         fmt::println("  ref_time            : {}", pay.ref_time.to_time_point());
@@ -52,6 +52,6 @@ awaitable<void> print_chrony_tracking(chrony_client<boost::asio::io_context::exe
 }
 
 boost::asio::io_context ioc{1};
-chrony_client<boost::asio::io_context::executor_type> sock(ioc);
+chrony_client sock(ioc);
 co_spawn(ioc, print_chrony_tracking(sock), detached);
 ```

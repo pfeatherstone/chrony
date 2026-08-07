@@ -8,18 +8,20 @@
 #include "chrony.h"
 
 using namespace std::chrono;
-using namespace chrony;
 using boost::asio::detached;
-template<class T> using awaitable = boost::asio::awaitable<T, boost::asio::io_context::executor_type>;
+using awaitable     = boost::asio::awaitable<void, boost::asio::io_context::executor_type>;
+using chrony_client = chrony::basic_chrony_client<boost::asio::io_context::executor_type>;
+using chrony::payload_tracking;
+using chrony::payload_source_data;
 
-std::string format_address(const chrony_address& address)
+std::string format_address(const chrony::chrony_address& address)
 {
     if (const auto ip = address.to_address()) return ip->to_string();
     if (const auto id = address.to_id())      return fmt::format("ID:{:08X}", *id);
     else                                      return "<unspecified>";
 }
 
-awaitable<void> print_chrony_tracking(chrony_client<boost::asio::io_context::executor_type>& sock)
+awaitable print_chrony_tracking(chrony_client& sock)
 {
     try
     {
@@ -48,7 +50,7 @@ awaitable<void> print_chrony_tracking(chrony_client<boost::asio::io_context::exe
     }
 }
 
-awaitable<void> print_chrony_sources(chrony_client<boost::asio::io_context::executor_type>& sock)
+awaitable print_chrony_sources(chrony_client& sock)
 {
     try
     {
@@ -81,7 +83,7 @@ awaitable<void> print_chrony_sources(chrony_client<boost::asio::io_context::exec
     }
 }
 
-awaitable<void> print_chrony_all(chrony_client<boost::asio::io_context::executor_type>& sock)
+awaitable print_chrony_all(chrony_client& sock)
 {
     co_await print_chrony_tracking(sock);
     co_await print_chrony_sources(sock);
@@ -90,7 +92,7 @@ awaitable<void> print_chrony_all(chrony_client<boost::asio::io_context::executor
 int main()
 {
     boost::asio::io_context ioc{1};
-    chrony_client<boost::asio::io_context::executor_type> sock(ioc);
+    chrony_client sock(ioc);
     co_spawn(ioc, print_chrony_all(sock), detached);
     ioc.run();
 }

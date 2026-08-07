@@ -241,13 +241,13 @@ namespace chrony
 //----------------------------------------------------------------------------------------------------------------
 
     template<class Executor>
-    class chrony_client
+    class basic_chrony_client
     {
     public:
         using executor_type = Executor;
         using udp           = boost::asio::ip::udp;
         using udp_socket    = boost::asio::basic_datagram_socket<udp, Executor>;
-        template <typename Executor1> struct rebind_executor { using other = chrony_client<Executor1>;};
+        template <typename Executor1> struct rebind_executor { using other = basic_chrony_client<Executor1>;};
 
     private:
         udp_socket          sock;
@@ -266,7 +266,7 @@ namespace chrony
         auto        get_cancellation_state()          noexcept {return boost::asio::get_associated_cancellation_slot(sock);}
         auto        get_allocator()             const noexcept {return boost::asio::get_associated_allocator(sock);}
 
-        chrony_client(const executor_type& ex)
+        basic_chrony_client(const executor_type& ex)
         : sock(ex),
           rand(std::random_device{}())
         {
@@ -279,8 +279,8 @@ namespace chrony
                 std::is_convertible_v<ExecutionContext&, boost::asio::execution_context&> &&
                 std::constructible_from<executor_type, decltype(std::declval<ExecutionContext&>().get_executor())>
             )
-        explicit chrony_client(ExecutionContext& context)                      
-        : chrony_client(executor_type(context.get_executor()))
+        explicit basic_chrony_client(ExecutionContext& context)                      
+        : basic_chrony_client(executor_type(context.get_executor()))
         {
         }
 
@@ -295,6 +295,8 @@ namespace chrony
         );
     };
     
+    using chrony_client = basic_chrony_client<boost::asio::any_io_executor>;
+
 //----------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------
 // DEFINITIONS
@@ -342,13 +344,13 @@ namespace chrony
     }
 
     template<class Executor>
-    struct chrony_client<Executor>::async_read_tracking_impl
+    struct basic_chrony_client<Executor>::async_read_tracking_impl
     {
-        chrony_client<Executor>&            client;
+        basic_chrony_client<Executor>&      client;
         uint32_t                            seq{};
         enum {writing, reading, parsing}    state{writing};
 
-        async_read_tracking_impl(chrony_client<Executor>& client_)
+        async_read_tracking_impl(basic_chrony_client<Executor>& client_)
         : client{client_}
         {
         }
@@ -434,7 +436,7 @@ namespace chrony
 
     template<class Executor>
     template<BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, payload_tracking)) CompletionToken>
-    inline auto chrony_client<Executor>::async_read_tracking (
+    inline auto basic_chrony_client<Executor>::async_read_tracking (
         CompletionToken&& token
     )
     {
@@ -447,17 +449,17 @@ namespace chrony
 //----------------------------------------------------------------------------------------------------------------
 
     template<class Executor>
-    struct chrony_client<Executor>::async_read_sources_impl
+    struct basic_chrony_client<Executor>::async_read_sources_impl
     {
         enum class state_t {writing_num, reading, parsing_num, parsing_data};
-        chrony_client<Executor>&            client;
+        basic_chrony_client<Executor>&      client;
         uint32_t                            seq{};
         std::vector<payload_source_data>    sources;
         int32_t                             count{};
         state_t                             state{state_t::writing_num};
         state_t                             next{};
 
-        async_read_sources_impl(chrony_client<Executor>& client_)
+        async_read_sources_impl(basic_chrony_client<Executor>& client_)
         : client{client_}
         {
         }
@@ -621,7 +623,7 @@ namespace chrony
 
     template<class Executor>
     template<BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, std::vector<payload_source_data>)) CompletionToken>
-    inline auto chrony_client<Executor>::async_read_sources (
+    inline auto basic_chrony_client<Executor>::async_read_sources (
         CompletionToken&& token
     )
     {
