@@ -240,6 +240,13 @@ namespace chrony
 
 //----------------------------------------------------------------------------------------------------------------
 
+    template<class ExecutionContext, class Executor>
+    concept compatible_execution_context =
+        std::is_convertible_v<ExecutionContext&, boost::asio::execution_context&> &&
+        std::constructible_from<Executor, decltype(std::declval<ExecutionContext&>().get_executor())>;
+   
+//----------------------------------------------------------------------------------------------------------------
+
     template<class Executor>
     class basic_chrony_client
     {
@@ -259,30 +266,18 @@ namespace chrony
         struct async_read_sources_impl;
 
     public:
-        const auto& next_layer()                const noexcept {return sock;}
-        auto&       next_layer()                      noexcept {return sock;}
-        auto&       lowest_layer()                    noexcept {return sock.lowest_layer();}
-        auto        get_executor()                    noexcept {return sock.get_executor();}
-        auto        get_cancellation_state()          noexcept {return boost::asio::get_associated_cancellation_slot(sock);}
-        auto        get_allocator()             const noexcept {return boost::asio::get_associated_allocator(sock);}
 
-        basic_chrony_client(const executor_type& ex)
-        : sock(ex),
-          rand(std::random_device{}())
-        {
-            // This ensures kernel filters received packets so only datagrams from the connected peer are delivered.
-            sock.connect({boost::asio::ip::make_address_v4("127.0.0.1"), 323});
-        }
+        basic_chrony_client(const executor_type& ex);
 
-        template <typename ExecutionContext>
-            requires (
-                std::is_convertible_v<ExecutionContext&, boost::asio::execution_context&> &&
-                std::constructible_from<executor_type, decltype(std::declval<ExecutionContext&>().get_executor())>
-            )
-        explicit basic_chrony_client(ExecutionContext& context)                      
-        : basic_chrony_client(executor_type(context.get_executor()))
-        {
-        }
+        template <compatible_execution_context<executor_type> ExecutionContext>
+        explicit basic_chrony_client(ExecutionContext& context);
+
+        const auto& next_layer()          const noexcept;
+        auto&       next_layer()                noexcept;
+        auto&       lowest_layer()              noexcept;
+        auto        get_executor()              noexcept;
+        auto        get_cancellation_state()    noexcept;
+        auto        get_allocator()       const noexcept;
 
         template<BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, payload_tracking)) CompletionToken = boost::asio::default_completion_token_t<Executor>>
         auto async_read_tracking (
@@ -301,6 +296,33 @@ namespace chrony
 //----------------------------------------------------------------------------------------------------------------
 // DEFINITIONS
 //----------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------
+
+    template<class Executor>
+    inline basic_chrony_client<Executor>::basic_chrony_client(const executor_type& ex)
+    : sock(ex),
+      rand(std::random_device{}())
+    {
+        // This ensures kernel filters received packets so only datagrams from the connected peer are delivered.
+        sock.connect({boost::asio::ip::make_address_v4("127.0.0.1"), 323});
+    }
+
+    template<class Executor>
+    template <compatible_execution_context<Executor> ExecutionContext>
+    inline basic_chrony_client<Executor>::basic_chrony_client(ExecutionContext& context)                      
+    : basic_chrony_client(executor_type(context.get_executor()))
+    {
+    }
+  
+//----------------------------------------------------------------------------------------------------------------
+
+    template<class Executor> inline const auto& basic_chrony_client<Executor>::next_layer()       const noexcept {return sock;}
+    template<class Executor> inline auto&       basic_chrony_client<Executor>::next_layer()             noexcept {return sock;}
+    template<class Executor> inline auto&       basic_chrony_client<Executor>::lowest_layer()           noexcept {return sock.lowest_layer();}
+    template<class Executor> inline auto        basic_chrony_client<Executor>::get_executor()           noexcept {return sock.get_executor();}
+    template<class Executor> inline auto        basic_chrony_client<Executor>::get_cancellation_state() noexcept {return boost::asio::get_associated_cancellation_slot(sock);}
+    template<class Executor> inline auto        basic_chrony_client<Executor>::get_allocator()    const noexcept {return boost::asio::get_associated_allocator(sock);}
+
 //----------------------------------------------------------------------------------------------------------------
 
     template<class Enum>
