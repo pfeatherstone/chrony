@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.23.0)
-project(Chrony LANGUAGES C CXX)
+project(Chrony LANGUAGES CXX)
 
 # Helpers
 set(IS_GCC      "$<CXX_COMPILER_ID:GNU>")
@@ -19,7 +19,6 @@ CPMAddPackage(
   URL_HASH SHA256=29c7d4f4ac36ad853b6765d03571ea60d90286775df026b4efd9f3281131972b
   OPTIONS "BUILD_SHARED_LIBS OFF" 
           "BOOST_ENABLE_CMAKE ON"
-          "BOOST_ASIO_DISABLE_BOOST_COROUTINE ON"
           "BOOST_INCLUDE_LIBRARIES asio")
 
 CPMAddPackage("gh:fmtlib/fmt#12.2.0")
@@ -39,10 +38,15 @@ target_include_directories(chrony
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/lib>
   PUBLIC $<INSTALL_INTERFACE:include>)
 
-# Example
-add_executable(client src/examples/client.cpp)
-target_link_libraries(client PRIVATE chrony::chrony fmt::fmt)
-target_link_options(client PRIVATE $<$<CONFIG:Release>:-Wl,--gc-sections;-Wl,--as-needed;-s>)
+# Examples
+function(add_function example)
+  add_executable(${example} src/examples/${example}.cpp)
+  target_link_libraries(${example} PRIVATE chrony::chrony fmt::fmt)
+  target_link_options(${example} PRIVATE $<$<AND:$<CONFIG:Release>,${IS_NOT_MSVC}>:-Wl,--gc-sections;-Wl,--as-needed;-s>)
+endfunction()
+
+add_function(client_awaitable)
+add_function(client_coro)
 
 # # Test
 # add_executable(chrony_tests 

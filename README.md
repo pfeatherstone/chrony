@@ -9,7 +9,8 @@ Copy the contents of `src/lib` into your project then link to Boost::asio.
 ## Examples
 
 Try out:
-- [client.cpp](src/examples/client.cpp)
+- [client_awaitable.cpp](src/examples/client_awaitable.cpp)
+- [client_coro.cpp](src/examples/client_coro.cpp)
 
 Build using:
 

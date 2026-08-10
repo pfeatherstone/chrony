@@ -6,6 +6,8 @@
 #include <string_view>
 #include <vector>
 #include <optional>
+#include <span>
+#include <concepts>
 #include <boost/asio/ip/udp.hpp>
 #include <boost/asio/compose.hpp>
 
@@ -242,7 +244,7 @@ namespace chrony
 
     template<class ExecutionContext, class Executor>
     concept compatible_execution_context =
-        std::is_convertible_v<ExecutionContext&, boost::asio::execution_context&> &&
+        std::convertible_to<ExecutionContext&, boost::asio::execution_context&> &&
         std::constructible_from<Executor, decltype(std::declval<ExecutionContext&>().get_executor())>;
    
 //----------------------------------------------------------------------------------------------------------------
