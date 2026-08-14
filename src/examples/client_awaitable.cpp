@@ -3,7 +3,6 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
-#include <fmt/chrono.h>
 #include <fmt/base.h>
 #include "chrony.h"
 #include "chrony_printers.h"
