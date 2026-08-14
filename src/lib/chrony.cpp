@@ -19,6 +19,7 @@ namespace chrony
         {
             switch(static_cast<chrony_error>(ev))
             {
+            case CHRONY_SERVICE_NOT_AVAILABLE:              return "Chronyd service not available";
             case CHRONY_TRANSACTION_INSUFFICIENT_DATA:      return "Insufficient data while writing/reading request/response";
             case CHRONY_BAD_VERSION:                        return "Bad version (!6)";
             case CHRONY_BAD_PACKET_TYPE:                    return "Bad packet type.";

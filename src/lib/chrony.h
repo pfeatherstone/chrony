@@ -18,7 +18,8 @@ namespace chrony
 
     enum chrony_error
     {
-        CHRONY_TRANSACTION_INSUFFICIENT_DATA = 1,
+        CHRONY_SERVICE_NOT_AVAILABLE = 1,
+        CHRONY_TRANSACTION_INSUFFICIENT_DATA,
         CHRONY_BAD_VERSION,
         CHRONY_BAD_PACKET_TYPE,
         CHRONY_UNEXPECTED_COMMAND,
@@ -405,7 +406,10 @@ namespace chrony
         void operator()(Self& self, boost::system::error_code error = {}, std::size_t ntransferred = 0)
         {
             // IO error
-            if (error)
+            if (error == boost::asio::error::connection_refused)
+                self.complete(make_error_code(CHRONY_SERVICE_NOT_AVAILABLE), {});
+            
+            else if (error)
                 self.complete(error, {});
 
             else if (state == writing)
@@ -541,7 +545,10 @@ namespace chrony
         void operator()(Self& self, boost::system::error_code error = {}, std::size_t ntransferred = 0)
         {
             // IO error
-            if (error)
+            if (error == boost::asio::error::connection_refused)
+                self.complete(make_error_code(CHRONY_SERVICE_NOT_AVAILABLE), {});
+            
+            else if (error)
                 self.complete(error, {});
 
             else if (state == state_t::writing_num)
