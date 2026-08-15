@@ -96,7 +96,8 @@ namespace chrony
     {
         source_num  = 2,
         source_data = 3,
-        tracking    = 5
+        tracking    = 5,
+        sourcestats = 6
     };
 
 //----------------------------------------------------------------------------------------------------------------
@@ -151,15 +152,6 @@ namespace chrony
     };
 
     static_assert(sizeof(request_header) == 20);
-
-//----------------------------------------------------------------------------------------------------------------
-
-    struct request_source_data
-    {
-        int32_t index{};
-    };
-
-    static_assert(sizeof(request_source_data) == 4);
 
 //----------------------------------------------------------------------------------------------------------------
 
@@ -231,15 +223,33 @@ namespace chrony
 
 //----------------------------------------------------------------------------------------------------------------
 
+    struct payload_sourcestats
+    {
+        uint32_t        reference_id{};
+        chrony_address  address{};
+        uint32_t        n_samples{};
+        uint32_t        n_runs{};
+        uint32_t        span_seconds{};
+        chrony_float    sample_stdev{};
+        chrony_float    freq_residual_ppm{};
+        chrony_float    skew_ppm{};
+        chrony_float    estimated_offset{};
+        chrony_float    estimated_offset_error{};
+    };
+
+    static_assert(sizeof(payload_sourcestats) == 56);
+
+//----------------------------------------------------------------------------------------------------------------
+
     void byteswap(chrony_float& flt);
     void byteswap(chrony_timestamp& ts);
     void byteswap(chrony_address& addr);
     void byteswap(request_header& hdr);
-    void byteswap(request_source_data& pay);
     void byteswap(response_header& hdr);
     void byteswap(payload_tracking& pay);
     void byteswap(payload_sources_num& pay);
     void byteswap(payload_source_data& pay);
+    void byteswap(payload_sourcestats& pay);
 
 //----------------------------------------------------------------------------------------------------------------
 
@@ -267,6 +277,7 @@ namespace chrony
 
         struct async_read_tracking_impl;
         struct async_read_sources_impl;
+        struct async_read_sourcestats_impl;
 
     public:
 
@@ -289,6 +300,11 @@ namespace chrony
 
         template<BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, std::vector<payload_source_data>)) CompletionToken = boost::asio::default_completion_token_t<Executor>>
         auto async_read_sources (
+            CompletionToken&& token = boost::asio::default_completion_token_t<Executor>()
+        );
+
+        template<BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, std::vector<payload_sourcestats>)) CompletionToken = boost::asio::default_completion_token_t<Executor>>
+        auto async_read_sourcestats (
             CompletionToken&& token = boost::asio::default_completion_token_t<Executor>()
         );
     };
@@ -368,6 +384,96 @@ namespace chrony
         return {};
     }
 
+    inline void send_tracking_req(auto& self, auto& sock, auto& bufwrite, auto& bufread, auto& rand, auto& seq)
+    {
+        // Prepare request
+        request_header req{};
+        req.version     = 6;
+        req.type        = to_underlying(packet_type::request);
+        req.command     = to_underlying(request_command::tracking);
+        req.sequence    = std::uniform_int_distribution<uint32_t>{}(rand);
+        req.attempt     = 0;
+        seq             = req.sequence;
+        byteswap(req);
+
+        // Resize buffer and serialize
+        bufread.resize(sizeof(response_header) + sizeof(payload_tracking));
+        bufwrite.resize(bufread.size());
+        memcpy(&bufwrite[0], &req, sizeof(req));
+
+        // Send
+        sock.async_send(boost::asio::buffer(bufwrite), std::move(self));
+    }
+
+    inline void send_source_count_req(auto& self, auto& sock, auto& bufwrite, auto& bufread, auto& rand, auto& seq)
+    {
+        // Prepare request
+        request_header req{};
+        req.version     = 6;
+        req.type        = to_underlying(packet_type::request);
+        req.command     = to_underlying(request_command::source_num);
+        req.sequence    = std::uniform_int_distribution<uint32_t>{}(rand);
+        req.attempt     = 0;
+        seq             = req.sequence;
+        byteswap(req);
+
+        // Resize buffer and serialize
+        bufread.resize(sizeof(response_header) + sizeof(payload_sources_num));
+        bufwrite.assign(bufread.size(), '\0');
+        memcpy(&bufwrite[0], &req, sizeof(req));
+
+        // Send
+        sock.async_send(boost::asio::buffer(bufwrite), std::move(self));
+    }
+
+    inline void send_source_data_req(auto& self, auto& sock, auto& bufwrite, auto& bufread, auto& rand, auto& seq, auto count)
+    {
+        // Prepare request
+        request_header req{};
+        req.version     = 6;
+        req.type        = to_underlying(packet_type::request);
+        req.command     = to_underlying(request_command::source_data);
+        req.sequence    = std::uniform_int_distribution<uint32_t>{}(rand);
+        req.attempt     = 0;
+        seq             = req.sequence;
+        byteswap(req);
+        const int32_t idx = htonl(count);
+
+        // Resize buffer and serialize
+        bufread.resize(sizeof(response_header) + sizeof(payload_source_data));
+        bufwrite.assign(bufread.size(), '\0');
+        size_t off{};
+        memcpy(&bufwrite[off], &req, sizeof(req)); off += sizeof(req);
+        memcpy(&bufwrite[off], &idx, sizeof(idx)); off += sizeof(idx);
+
+        // Send
+        sock.async_send(boost::asio::buffer(bufwrite), std::move(self));
+    }
+
+    inline void send_sourcestats_req(auto& self, auto& sock, auto& bufwrite, auto& bufread, auto& rand, auto& seq, auto count)
+    {
+        // Prepare request
+        request_header req{};
+        req.version     = 6;
+        req.type        = to_underlying(packet_type::request);
+        req.command     = to_underlying(request_command::sourcestats);
+        req.sequence    = std::uniform_int_distribution<uint32_t>{}(rand);
+        req.attempt     = 0;
+        seq             = req.sequence;
+        byteswap(req);
+        const uint32_t idx = htonl(count);
+
+        // Resize buffer and serialize
+        bufread.resize(sizeof(response_header) + sizeof(payload_sourcestats));
+        bufwrite.assign(bufread.size(), '\0');
+        size_t off{};
+        memcpy(&bufwrite[off], &req, sizeof(req)); off += sizeof(req);
+        memcpy(&bufwrite[off], &idx, sizeof(idx)); off += sizeof(idx);
+
+        // Send
+        sock.async_send(boost::asio::buffer(bufwrite), std::move(self));
+    }
+
     template<class Executor>
     struct basic_chrony_client<Executor>::async_read_tracking_impl
     {
@@ -378,28 +484,6 @@ namespace chrony
         async_read_tracking_impl(basic_chrony_client<Executor>& client_)
         : client{client_}
         {
-        }
-
-        template<class Self>
-        void send_tracking_req(Self& self)
-        {
-            // Prepare request
-            request_header req{};
-            req.version     = 6;
-            req.type        = to_underlying(packet_type::request);
-            req.command     = to_underlying(request_command::tracking);
-            req.sequence    = std::uniform_int_distribution<uint32_t>{}(client.rand);
-            req.attempt     = 0;
-            seq             = req.sequence;
-            byteswap(req);
-
-            // Resize buffer and serialize
-            client.bufread.resize(sizeof(response_header) + sizeof(payload_tracking));
-            client.bufwrite.resize(client.bufread.size());
-            memcpy(&client.bufwrite[0], &req, sizeof(req));
-
-            // Send
-            client.sock.async_send(boost::asio::buffer(client.bufwrite), std::move(self));
         }
 
         template<class Self>
@@ -415,7 +499,7 @@ namespace chrony
             else if (state == writing)
             {
                 state = reading;
-                send_tracking_req(self);
+                send_tracking_req(self, client.sock, client.bufwrite, client.bufread, client.rand, seq);
             }
 
             else if (state == reading)
@@ -491,55 +575,6 @@ namespace chrony
         : client{client_}
         {
         }
-
-        template<class Self>
-        void send_source_count_req(Self& self)
-        {
-            // Prepare request
-            request_header req{};
-            req.version     = 6;
-            req.type        = to_underlying(packet_type::request);
-            req.command     = to_underlying(request_command::source_num);
-            req.sequence    = std::uniform_int_distribution<uint32_t>{}(client.rand);
-            req.attempt     = 0;
-            seq             = req.sequence;
-            byteswap(req);
-
-            // Resize buffer and serialize
-            client.bufread.resize(sizeof(response_header) + sizeof(payload_sources_num));
-            client.bufwrite.assign(client.bufread.size(), '\0');
-            memcpy(&client.bufwrite[0], &req, sizeof(req));
-
-            // Send
-            client.sock.async_send(boost::asio::buffer(client.bufwrite), std::move(self));
-        }
-
-        template<class Self>
-        void send_source_data_req(Self& self)
-        {
-            // Prepare request
-            request_header      req{};
-            request_source_data pay{};
-            req.version     = 6;
-            req.type        = to_underlying(packet_type::request);
-            req.command     = to_underlying(request_command::source_data);
-            req.sequence    = std::uniform_int_distribution<uint32_t>{}(client.rand);
-            req.attempt     = 0;
-            seq             = req.sequence;
-            pay.index       = count;
-            byteswap(req);
-            byteswap(pay);
-
-            // Resize buffer and serialize
-            client.bufread.resize(sizeof(response_header) + sizeof(payload_source_data));
-            client.bufwrite.assign(client.bufread.size(), '\0');
-            size_t off{};
-            memcpy(&client.bufwrite[off], &req, sizeof(req)); off += sizeof(req);
-            memcpy(&client.bufwrite[off], &pay, sizeof(pay)); off += sizeof(pay);
-
-            // Send
-            client.sock.async_send(boost::asio::buffer(client.bufwrite), std::move(self));
-        }
         
         template<class Self>
         void operator()(Self& self, boost::system::error_code error = {}, std::size_t ntransferred = 0)
@@ -555,7 +590,7 @@ namespace chrony
             {
                 state = state_t::reading;
                 next  = state_t::parsing_num;
-                send_source_count_req(self);
+                send_source_count_req(self, client.sock, client.bufwrite, client.bufread, client.rand, seq);
             }
 
             else if (state == state_t::reading)
@@ -603,7 +638,7 @@ namespace chrony
                     sources.resize(pay.count);
                     state = state_t::reading;
                     next  = state_t::parsing_data;
-                    send_source_data_req(self);
+                    send_source_data_req(self, client.sock, client.bufwrite, client.bufread, client.rand, seq, count);
                 }
                 else
                 {
@@ -642,7 +677,7 @@ namespace chrony
                 if (count < sources.size())
                 {
                     state = state_t::reading;
-                    send_source_data_req(self);
+                    send_source_data_req(self, client.sock, client.bufwrite, client.bufread, client.rand, seq, count);
                 }
                 else
                 {
@@ -660,6 +695,147 @@ namespace chrony
     {
         return boost::asio::async_compose<CompletionToken, void(boost::system::error_code, std::vector<payload_source_data>)> (
             async_read_sources_impl{*this},
+            token, *this
+        );
+    }
+
+//----------------------------------------------------------------------------------------------------------------
+
+    template<class Executor>
+    struct basic_chrony_client<Executor>::async_read_sourcestats_impl
+    {
+        enum class state_t {writing_num, reading, parsing_num, parsing_data};
+        basic_chrony_client<Executor>&      client;
+        uint32_t                            seq{};
+        std::vector<payload_sourcestats>    stats;
+        int32_t                             count{};
+        state_t                             state{state_t::writing_num};
+        state_t                             next{};
+
+        async_read_sourcestats_impl(basic_chrony_client<Executor>& client_)
+        : client{client_}
+        {
+        }
+        
+        template<class Self>
+        void operator()(Self& self, boost::system::error_code error = {}, std::size_t ntransferred = 0)
+        {
+            // IO error
+            if (error == boost::asio::error::connection_refused)
+                self.complete(make_error_code(CHRONY_SERVICE_NOT_AVAILABLE), {});
+            
+            else if (error)
+                self.complete(error, {});
+
+            else if (state == state_t::writing_num)
+            {
+                state = state_t::reading;
+                next  = state_t::parsing_num;
+                send_source_count_req(self, client.sock, client.bufwrite, client.bufread, client.rand, seq);
+            }
+
+            else if (state == state_t::reading)
+            {
+                if (ntransferred != client.bufwrite.size())
+                    self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
+
+                else
+                {
+                    // Read
+                    state = next;
+                    client.sock.async_receive(boost::asio::buffer(client.bufread), std::move(self));
+                }
+            }
+
+            else if (state == state_t::parsing_num)
+            {
+                std::span<const char> buf(&client.bufread[0], ntransferred);
+
+                // Deserialize header
+                response_header     hdr{};
+                payload_sources_num pay{};
+                size_t off{};
+
+                auto ec = parse_response_header(hdr, request_command::source_num, reply_format::source_num, seq, buf, off);
+
+                if (ec)
+                {
+                    self.complete(ec, {});
+                    return;
+                }
+
+                // Deserialize payload
+                if (buf.size() < (sizeof(hdr)+sizeof(pay)))
+                {
+                    self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
+                    return;
+                }
+                
+                memcpy(&pay, &buf[off], sizeof(pay));
+                byteswap(pay);
+
+                if (pay.count > 0)
+                {
+                    stats.resize(pay.count);
+                    state = state_t::reading;
+                    next  = state_t::parsing_data;
+                    send_sourcestats_req(self, client.sock, client.bufwrite, client.bufread, client.rand, seq, count);
+                }
+                else
+                {
+                    self.complete({}, std::move(stats));
+                }
+            }
+            else if (state == state_t::parsing_data)
+            {
+                std::span<const char> buf(&client.bufread[0], ntransferred);
+
+                // Deserialize header
+                response_header     hdr{};
+                payload_sourcestats pay{};
+                size_t off{};
+
+                auto ec = parse_response_header(hdr, request_command::sourcestats, reply_format::sourcestats, seq, buf, off);
+
+                if (ec)
+                {
+                    self.complete(ec, {});
+                    return;
+                }
+
+                // Deserialize payload
+                if (buf.size() < (sizeof(hdr)+sizeof(pay)))
+                {
+                    self.complete(make_error_code(CHRONY_TRANSACTION_INSUFFICIENT_DATA), {});
+                    return;
+                }
+                
+                memcpy(&pay, &buf[off], sizeof(pay));
+                byteswap(pay);
+
+                stats[count++] = std::move(pay);
+
+                if (count < stats.size())
+                {
+                    state = state_t::reading;
+                    send_sourcestats_req(self, client.sock, client.bufwrite, client.bufread, client.rand, seq, count);
+                }
+                else
+                {
+                    self.complete({}, std::move(stats));
+                }
+            }
+        }
+    };
+
+    template<class Executor>
+    template<BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, std::vector<payload_sourcestats>)) CompletionToken>
+    inline auto basic_chrony_client<Executor>::async_read_sourcestats (
+        CompletionToken&& token
+    )
+    {
+        return boost::asio::async_compose<CompletionToken, void(boost::system::error_code, std::vector<payload_sourcestats>)> (
+            async_read_sourcestats_impl{*this},
             token, *this
         );
     }

@@ -197,11 +197,6 @@ namespace chrony
         hdr.sequence = ntohl(hdr.sequence);
     }
 
-    void byteswap(request_source_data& pay)
-    {
-        pay.index = static_cast<int32_t>(htonl(static_cast<uint32_t>(pay.index)));
-    }
-
     void byteswap(response_header& hdr)
     {
         hdr.command     = ntohs(hdr.command);
@@ -246,6 +241,20 @@ namespace chrony
         byteswap(pay.original_measurement);
         byteswap(pay.adjusted_measurement);
         byteswap(pay.measurement_error);
+    }
+
+    void byteswap(payload_sourcestats& pay)
+    {
+       pay.reference_id = ntohl(pay.reference_id);
+       byteswap(pay.address);
+       pay.n_samples    = ntohl(pay.n_samples);
+       pay.n_runs       = ntohl(pay.n_runs);
+       pay.span_seconds = ntohl(pay.span_seconds);
+       byteswap(pay.sample_stdev);
+       byteswap(pay.freq_residual_ppm);
+       byteswap(pay.skew_ppm);   
+       byteswap(pay.estimated_offset);
+       byteswap(pay.estimated_offset_error);
     }
 
 //----------------------------------------------------------------------------------------------------------------

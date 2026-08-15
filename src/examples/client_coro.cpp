@@ -14,6 +14,7 @@ using yield_context = boost::asio::basic_yield_context<boost::asio::io_context::
 using chrony_client = chrony::basic_chrony_client<boost::asio::io_context::executor_type>;
 using chrony::payload_tracking;
 using chrony::payload_source_data;
+using chrony::payload_sourcestats;
 
 void print_chrony_all(chrony_client& sock, yield_context yield)
 {
@@ -23,6 +24,8 @@ void print_chrony_all(chrony_client& sock, yield_context yield)
         print(pay);
         const std::vector<payload_source_data> sources = sock.async_read_sources(yield);
         print(sources);
+        const std::vector<payload_sourcestats> stats = sock.async_read_sourcestats(yield);
+        print(stats);
     }
     catch(const std::exception& e)
     {

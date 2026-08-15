@@ -9,6 +9,7 @@ using namespace std::chrono;
 using chrony_client = chrony::basic_chrony_client<boost::asio::io_context::executor_type>;
 using chrony::payload_tracking;
 using chrony::payload_source_data;
+using chrony::payload_sourcestats;
 
 void print_chrony_all(chrony_client& sock)
 {
@@ -19,12 +20,19 @@ void print_chrony_all(chrony_client& sock)
         }
         
         print(pay);
-        sock.async_read_sources([](auto ec, const std::vector<payload_source_data>& sources) {
+        sock.async_read_sources([&](auto ec, const std::vector<payload_source_data>& sources) {
             if (ec) {
                 fmt::println(stderr, "Error: {}", ec.message());
                 return;
             }
             print(sources);
+            sock.async_read_sourcestats([](auto ec, const std::vector<payload_sourcestats>& stats) {
+                if (ec) {
+                    fmt::println(stderr, "Error: {}", ec.message());
+                    return;
+                }
+                print(stats);
+            });
         });
     });
 }

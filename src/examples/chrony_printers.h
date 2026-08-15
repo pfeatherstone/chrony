@@ -57,4 +57,30 @@ inline void print(const std::vector<chrony::payload_source_data>& sources)
             static_cast<int64_t>(source.measurement_error.to_double()*1e6)
         );
     }
+    fmt::println("");
+}
+
+inline void print(const std::vector<chrony::payload_sourcestats>& stats)
+{
+    fmt::println("Chrony source stats: {}\n", stats.size());
+
+    fmt::println("{:<10} {:<20} {:>7} {:>7} {:>9} {:>12} {:>12} {:>10} {:>12} {:>12}",
+        "RefID", "Address", "Samples", "Runs", "Span(s)", "StdDev(us)", "Resid(ppm)", "Skew(ppm)", "Offset(us)", "OffsetErr(us)");
+
+    for (const auto& stat : stats)
+    {
+        fmt::println("{:08X}   {:<20} {:>7} {:>7} {:>9} {:>12.3f} {:+12.6f} {:>10.6f} {:+12.3f} {:>12.3f}",
+            stat.reference_id,
+            format_address(stat.address),
+            stat.n_samples,
+            stat.n_runs,
+            stat.span_seconds,
+            stat.sample_stdev.to_double() * 1e6,
+            stat.freq_residual_ppm.to_double(),
+            stat.skew_ppm.to_double(),
+            stat.estimated_offset.to_double() * 1e6,
+            stat.estimated_offset_error.to_double() * 1e6
+        );
+    }
+    fmt::println("");
 }
