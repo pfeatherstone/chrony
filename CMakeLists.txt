@@ -51,12 +51,13 @@ add_function(client_coro)
 
 # Tests
 add_executable(chrony_tests
-  src/tests/main.cpp)
+  src/tests/main.cpp
+  src/tests/chrony.cpp)
 target_link_libraries(chrony_tests PRIVATE chrony::chrony fmt::fmt)
 target_link_options(chrony_tests PRIVATE $<$<AND:$<CONFIG:Release>,${IS_NOT_MSVC}>:-Wl,--gc-sections;-Wl,--as-needed;-s>)
 
 if (CHRONY_ENABLE_SANITIZERS)
-  message(STATUS "Enabling sanitizers on unit tests")
+  message(STATUS "Enabling sanitizers")
   target_compile_options(chrony PUBLIC $<$<OR:${IS_GCC},${IS_CLANG}>:-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined>)
   target_link_options(chrony PUBLIC $<$<OR:${IS_GCC},${IS_CLANG}>:-fsanitize=address,undefined>)
 endif()
