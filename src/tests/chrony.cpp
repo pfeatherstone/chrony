@@ -44,7 +44,7 @@ TEST_CASE("tracking [coro]")
         tracking_done = true;
     };
 
-    spawn(ioc, fn, detached);
+    spawn(ioc, fn, [](std::exception_ptr ep) {CHECK(!ep);});
     ioc.run();
     CHECK(tracking_done);
 }
@@ -62,7 +62,7 @@ TEST_CASE("tracking [awaitable]")
         tracking_done = true;
     };
 
-    co_spawn(ioc, fn, detached);
+    co_spawn(ioc, fn, [](std::exception_ptr ep) {CHECK(!ep);});
     ioc.run();
     CHECK(tracking_done);
 }
@@ -97,7 +97,7 @@ TEST_CASE("sources [coro]")
         sources_done = true;
     };
 
-    spawn(ioc, fn, detached);
+    spawn(ioc, fn, [](std::exception_ptr ep) {CHECK(!ep);});
     ioc.run();
     CHECK(sources_done);
 }
@@ -115,7 +115,7 @@ TEST_CASE("sources [awaitable]")
         sources_done = true;
     };
 
-    co_spawn(ioc, fn, detached);
+    co_spawn(ioc, fn, [](std::exception_ptr ep) {CHECK(!ep);});
     ioc.run();
     CHECK(sources_done);
 }
@@ -150,7 +150,7 @@ TEST_CASE("stats [coro]")
         stats_done = true;
     };
 
-    spawn(ioc, fn, detached);
+    spawn(ioc, fn, [](std::exception_ptr ep) {CHECK(!ep);});
     ioc.run();
     CHECK(stats_done);
 }
@@ -168,7 +168,7 @@ TEST_CASE("stats [awaitable]")
         stats_done = true;
     };
 
-    co_spawn(ioc, fn, detached);
+    co_spawn(ioc, fn, [](std::exception_ptr ep) {CHECK(!ep);});
     ioc.run();
     CHECK(stats_done);
 }
