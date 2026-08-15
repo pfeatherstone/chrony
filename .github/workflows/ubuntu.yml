@@ -31,7 +31,8 @@ jobs:
             c_compiler: clang
             cxx_compiler: clang++
             name: Ubuntu-22.04-Clang
-            packages: clang
+            packages: clang libc++-dev
+            extra_cmake: '-DCMAKE_CXX_FLAGS="-stdlib=libc++" -DCMAKE_EXE_LINKER_FLAGS="-stdlib=libc++"'
           - os: ubuntu-24.04
             compiler: gcc
             c_compiler: gcc
@@ -43,7 +44,7 @@ jobs:
             c_compiler: clang
             cxx_compiler: clang++
             name: Ubuntu-24.04-Clang
-            packages: clang
+            packages: clang libc++-dev
 
     name: ${{ matrix.name }}
     steps:
@@ -64,7 +65,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.cxx_compiler }} \
-            -DCHRONY_ENABLE_SANITIZERS=ON
+            -DCHRONY_ENABLE_SANITIZERS=ON  \
+            ${{ matrix.extra_cmake }}
           cmake --build build --parallel
 
       - name: Run unit tests
