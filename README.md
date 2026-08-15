@@ -1,3 +1,5 @@
+![Ubuntu](https://github.com/pfeatherstone/chrony/actions/workflows/ubuntu.yml/badge.svg)
+
 # Chrony
 
 A C++ chronyd client library using Asio [composed operations](https://think-async.com/Asio/asio-1.38.2/doc/asio/overview/composition/compose.html).
