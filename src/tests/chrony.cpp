@@ -120,7 +120,7 @@ TEST_CASE("sources [awaitable]")
     CHECK(sources_done);
 }
 
-TEST_CASE("sources [callback]")
+TEST_CASE("stats [callback]")
 {
     boost::asio::io_context ioc;
     chrony::chrony_client client{ioc};
@@ -136,7 +136,7 @@ TEST_CASE("sources [callback]")
     CHECK(stats_done);
 }
 
-TEST_CASE("sources [coro]")
+TEST_CASE("stats [coro]")
 {
     boost::asio::io_context ioc;
     chrony::chrony_client client{ioc};
