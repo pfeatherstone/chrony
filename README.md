@@ -18,7 +18,7 @@ Try out:
 Build using:
 
 ```bash
-$ cmake ./examples -B build -DCMAKE_BUILD_TYPE=Release
+$ cmake . -B build -DCMAKE_BUILD_TYPE=Release
 $ cmake --build build --parallel
 ```
 
