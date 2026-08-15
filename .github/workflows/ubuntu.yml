@@ -70,7 +70,7 @@ jobs:
       - name: Run unit tests
         run: |
           mkdir -p build/test-results
-          ./build/chrony_tests --skip-benchmarks --reporter console --reporter junit::out=build/test-results/chrony-tests-${{ matrix.name }}.xml
+          ./build/chrony_tests --reporters=junit --out=build/test-results/chrony-tests-${{ matrix.name }}.xml
 
       - name: Upload JUnit XML artifact
         if: ${{ always() }}
