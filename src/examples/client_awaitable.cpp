@@ -14,24 +14,14 @@ using chrony_client = chrony::basic_chrony_client<boost::asio::io_context::execu
 using chrony::payload_tracking;
 using chrony::payload_source_data;
 
-awaitable print_chrony_tracking(chrony_client& sock)
-{
-    const payload_tracking pay = co_await sock.async_read_tracking();
-    print(pay);
-}
-
-awaitable print_chrony_sources(chrony_client& sock)
-{
-    const std::vector<payload_source_data> sources = co_await sock.async_read_sources();
-    print(sources);
-}
-
 awaitable print_chrony_all(chrony_client& sock)
 {
     try
     {
-        co_await print_chrony_tracking(sock);
-        co_await print_chrony_sources(sock);
+        const payload_tracking pay = co_await sock.async_read_tracking();
+        print(pay);
+        const std::vector<payload_source_data> sources = co_await sock.async_read_sources();
+        print(sources);
     }
     catch(const std::exception& e)
     {
