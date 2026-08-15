@@ -56,7 +56,7 @@ namespace chrony
     auto chrony_timestamp::to_time_point() const -> system_clock::time_point
     {
         const uint64_t sec = (static_cast<uint64_t>(sec_high) << 32) | static_cast<uint64_t>(sec_low);
-        return system_clock::time_point{seconds{sec} + nanoseconds{nano}};
+        return system_clock::time_point{duration_cast<system_clock::duration>(seconds{sec} + nanoseconds{nano})};
     }
      
 //----------------------------------------------------------------------------------------------------------------
