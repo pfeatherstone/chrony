@@ -23,8 +23,8 @@ CPMAddPackage(
 
 CPMAddPackage("gh:fmtlib/fmt#12.2.0")
 
-# Options
-option(CHRONY_ENABLE_SANITIZERS "Build unit tests with sanitizers" OFF)
+# # Options
+# option(CHRONY_ENABLE_SANITIZERS "Build unit tests with sanitizers" OFF)
 
 # Lib
 add_library(chrony)
@@ -45,17 +45,12 @@ function(add_function example)
   target_link_options(${example} PRIVATE $<$<AND:$<CONFIG:Release>,${IS_NOT_MSVC}>:-Wl,--gc-sections;-Wl,--as-needed;-s>)
 endfunction()
 
+add_function(client_callback)
 add_function(client_awaitable)
 add_function(client_coro)
 
-# # Test
-# add_executable(chrony_tests 
-#   src/tests/doctest.cpp
-#   src/tests/encodec.cpp)
-# target_link_libraries(encodec_tests PRIVATE encodec::encodec)
-
-if (CHRONY_ENABLE_SANITIZERS)
-  message(STATUS "Enabling sanitizers on unit tests")
-  target_compile_options(chrony PUBLIC $<$<OR:${IS_GCC},${IS_CLANG}>:-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined>)
-  target_link_options(chrony PUBLIC $<$<OR:${IS_GCC},${IS_CLANG}>:-fsanitize=address,undefined>)
-endif()
+# if (CHRONY_ENABLE_SANITIZERS)
+#   message(STATUS "Enabling sanitizers on unit tests")
+#   target_compile_options(chrony PUBLIC $<$<OR:${IS_GCC},${IS_CLANG}>:-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined>)
+#   target_link_options(chrony PUBLIC $<$<OR:${IS_GCC},${IS_CLANG}>:-fsanitize=address,undefined>)
+# endif()
