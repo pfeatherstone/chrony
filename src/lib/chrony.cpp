@@ -259,4 +259,13 @@ namespace chrony
 
 //----------------------------------------------------------------------------------------------------------------
 
+    static_assert(sizeof(request_header) == 20);
+    static_assert(sizeof(response_header) == 28);
+    static_assert(sizeof(payload_tracking) == 76);
+    static_assert(sizeof(payload_sources_num) == 4);
+    static_assert(sizeof(payload_source_data) == 48);
+    static_assert(sizeof(payload_sourcestats) == 56);
+
+//----------------------------------------------------------------------------------------------------------------
+
 }

@@ -151,8 +151,6 @@ namespace chrony
         uint8_t  pad1[8];
     };
 
-    static_assert(sizeof(request_header) == 20);
-
 //----------------------------------------------------------------------------------------------------------------
 
     struct response_header
@@ -167,8 +165,6 @@ namespace chrony
         uint32_t sequence{};
         uint8_t  pad2[8];
     };
-
-    static_assert(sizeof(response_header) == 28);
 
 //----------------------------------------------------------------------------------------------------------------
 
@@ -190,16 +186,12 @@ namespace chrony
         chrony_float        last_update_interval{};
     };
 
-    static_assert(sizeof(payload_tracking) == 76);
-
 //----------------------------------------------------------------------------------------------------------------
 
     struct payload_sources_num
     {
         uint32_t count{};
     };
-
-    static_assert(sizeof(payload_sources_num) == 4);
 
 //----------------------------------------------------------------------------------------------------------------
 
@@ -219,8 +211,6 @@ namespace chrony
         std::chrono::microseconds poll() const;
     };
 
-    static_assert(sizeof(payload_source_data) == 48);
-
 //----------------------------------------------------------------------------------------------------------------
 
     struct payload_sourcestats
@@ -236,8 +226,6 @@ namespace chrony
         chrony_float    estimated_offset{};
         chrony_float    estimated_offset_error{};
     };
-
-    static_assert(sizeof(payload_sourcestats) == 56);
 
 //----------------------------------------------------------------------------------------------------------------
 
