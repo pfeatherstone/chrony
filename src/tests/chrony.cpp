@@ -2,11 +2,9 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/spawn.hpp>
 #include <boost/asio/co_spawn.hpp>
-#include <boost/asio/detached.hpp>
 #include <boost/asio/as_tuple.hpp>
 #include <chrony.h>
 
-using boost::asio::detached;
 using boost::asio::spawn;
 using boost::asio::co_spawn;
 using boost::asio::as_tuple;
@@ -21,9 +19,10 @@ TEST_CASE("tracking [callback]")
 
     bool tracking_done{};
 
-    client.async_read_tracking([&](boost::system::error_code ec, chrony::payload_tracking) {
+    client.async_read_tracking([&](boost::system::error_code ec, chrony::payload_tracking pay) {
         CHECK(!ec);
         tracking_done = true;
+        CHECK(pay.stratum <= 16);
     });
 
     ioc.run();
@@ -42,6 +41,7 @@ TEST_CASE("tracking [coro]")
         const auto pay = client.async_read_tracking(yield[ec]);
         CHECK(!ec);
         tracking_done = true;
+        CHECK(pay.stratum <= 16);
     };
 
     spawn(ioc, fn, [](std::exception_ptr ep) {CHECK(!ep);});
@@ -60,6 +60,7 @@ TEST_CASE("tracking [awaitable]")
         const auto [ec, pay] = co_await client.async_read_tracking(as_tuple(use_awaitable));
         CHECK(!ec);
         tracking_done = true;
+        CHECK(pay.stratum <= 16);
     };
 
     co_spawn(ioc, fn, [](std::exception_ptr ep) {CHECK(!ep);});
