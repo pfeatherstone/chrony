@@ -281,8 +281,6 @@ namespace chrony
         auto&       next_layer()                noexcept;
         auto&       lowest_layer()              noexcept;
         auto        get_executor()              noexcept;
-        auto        get_cancellation_state()    noexcept;
-        auto        get_allocator()       const noexcept;
 
         template<BOOST_ASIO_COMPLETION_TOKEN_FOR(void(boost::system::error_code, payload_tracking)) CompletionToken = boost::asio::default_completion_token_t<Executor>>
         auto async_read_tracking (
@@ -330,8 +328,6 @@ namespace chrony
     template<class Executor> inline auto&       basic_chrony_client<Executor>::next_layer()             noexcept {return sock;}
     template<class Executor> inline auto&       basic_chrony_client<Executor>::lowest_layer()           noexcept {return sock.lowest_layer();}
     template<class Executor> inline auto        basic_chrony_client<Executor>::get_executor()           noexcept {return sock.get_executor();}
-    template<class Executor> inline auto        basic_chrony_client<Executor>::get_cancellation_state() noexcept {return boost::asio::get_associated_cancellation_slot(sock);}
-    template<class Executor> inline auto        basic_chrony_client<Executor>::get_allocator()    const noexcept {return boost::asio::get_associated_allocator(sock);}
 
 //----------------------------------------------------------------------------------------------------------------
 
