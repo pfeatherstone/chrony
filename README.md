@@ -34,19 +34,19 @@ awaitable<void> print_chrony_tracking(chrony_client& sock)
 
         fmt::println("Tracking results:");
         fmt::println("  reference_id        : {:08X}", pay.reference_id);
-        fmt::println("  address             : {}", pay.address.to_address().value().to_string());
+        fmt::println("  address             : {}", format_address(pay.address));
         fmt::println("  stratum             : {}", pay.stratum);
         fmt::println("  leap_status         : {}", to_string(pay.status));
         fmt::println("  ref_time            : {}", pay.ref_time.to_time_point());
-        fmt::println("  current_correction  : {}", pay.current_correction.to_double());
-        fmt::println("  last_offset         : {}", pay.last_offset.to_double());
-        fmt::println("  rms_offset          : {}", pay.rms_offset.to_double());
-        fmt::println("  freq_offset_ppm     : {}", pay.freq_offset_ppm.to_double());
-        fmt::println("  freq_residual_ppm   : {}", pay.freq_residual_ppm.to_double());
-        fmt::println("  skew_ppm            : {}", pay.skew_ppm.to_double());
-        fmt::println("  root_delay          : {}", pay.root_delay.to_double());
-        fmt::println("  root_dispersion     : {}", pay.root_dispersion.to_double());
-        fmt::println("  last_update_interval: {}", pay.last_update_interval.to_double());
+        fmt::println("  current_correction  : {}", to_double(pay.current_correction));
+        fmt::println("  last_offset         : {}", to_double(pay.last_offset));
+        fmt::println("  rms_offset          : {}", to_double(pay.rms_offset));
+        fmt::println("  freq_offset_ppm     : {}", to_double(pay.freq_offset_ppm));
+        fmt::println("  freq_residual_ppm   : {}", to_double(pay.freq_residual_ppm));
+        fmt::println("  skew_ppm            : {}", to_double(pay.skew_ppm));
+        fmt::println("  root_delay          : {}", to_double(pay.root_delay));
+        fmt::println("  root_dispersion     : {}", to_double(pay.root_dispersion));
+        fmt::println("  last_update_interval: {}", to_double(pay.last_update_interval));
         fmt::println("");
     }
     catch(const std::exception& e)
@@ -58,4 +58,5 @@ awaitable<void> print_chrony_tracking(chrony_client& sock)
 boost::asio::io_context ioc{1};
 chrony_client sock(ioc);
 co_spawn(ioc, print_chrony_tracking(sock), detached);
+ioc.run();
 ```

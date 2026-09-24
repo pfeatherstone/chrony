@@ -63,8 +63,8 @@ namespace chrony
         constexpr int32_t   coeff_max   =  (1 << 24) - 1;
         constexpr int       exp_max     =  63;
         constexpr uint32_t  coeff_mask  = (1u << 25) - 1;
-        constexpr double    value_max   = std::ldexp(static_cast<double>(coeff_max), exp_max - 25);
-        constexpr double    value_min   = std::ldexp(static_cast<double>(coeff_min), exp_max - 25);
+        const     double    value_max   = std::ldexp(static_cast<double>(coeff_max), exp_max - 25);
+        const     double    value_min   = std::ldexp(static_cast<double>(coeff_min), exp_max - 25);
 
         if (value == 0.0)
         {
