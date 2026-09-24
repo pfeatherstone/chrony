@@ -55,6 +55,7 @@ add_executable(chrony_tests
   src/tests/chrony.cpp)
 target_link_libraries(chrony_tests PRIVATE chrony::chrony fmt::fmt)
 target_link_options(chrony_tests PRIVATE $<$<AND:$<CONFIG:Release>,${IS_NOT_MSVC}>:-Wl,--gc-sections;-Wl,--as-needed;-s>)
+target_compile_options(chrony_tests PRIVATE $<${IS_NOT_MSVC}:-Wall -Wextra -Wpedantic -Werror>)
 
 if (CHRONY_ENABLE_SANITIZERS)
   message(STATUS "Enabling sanitizers")

@@ -27,6 +27,7 @@ namespace chrony
             case CHRONY_UNEXPECTED_FORMAT:                  return "Received unexpected reply format type.";
             case CHRONY_BAD_SEQUENCE_NUMBER:                return "Received non-matching sequence number in response";
             case CHRONY_BAD_REPLY_STATUS:                   return "Received bad status in reply";
+            case CHRONY_BAD_CHRONY_FLOAT_CONVERSION:        return "Bad conversion of chrony_float to/from double";
             default:                                        return "Unrecognised error";
             }
         }
@@ -41,14 +42,69 @@ namespace chrony
 
 //----------------------------------------------------------------------------------------------------------------
 
-    double chrony_float::to_double() const
+    double to_double(chrony_float f)
     {
         constexpr uint32_t mask = (1u << 25) - 1;
-        int32_t exp   = data >> 25;
-        if (exp >= (1 << 6)) exp -= (1 << 7);
-        int32_t coeff = data & mask;
-        if (coeff >= (1 << 24)) coeff -= (1 << 25);
+
+        int32_t exp   = f.data >> 25;
+        if (exp >= (1 << 6)) 
+            exp -= (1 << 7);
+
+        int32_t coeff = f.data & mask;
+        if (coeff >= (1 << 24)) 
+            coeff -= (1 << 25);
+
         return std::ldexp((double)coeff, exp-25);
+    }
+
+    void from_double(chrony_float& f, double value, std::error_code& ec)
+    {
+        constexpr int32_t   coeff_min   = -(1 << 24);
+        constexpr int32_t   coeff_max   =  (1 << 24) - 1;
+        constexpr int       exp_max     =  63;
+        constexpr uint32_t  coeff_mask  = (1u << 25) - 1;
+        constexpr double    value_max   = std::ldexp(static_cast<double>(coeff_max), exp_max - 25);
+        constexpr double    value_min   = std::ldexp(static_cast<double>(coeff_min), exp_max - 25);
+
+        if (value == 0.0)
+        {
+            f  = {};
+        }
+
+        else if (!std::isfinite(value)) 
+        {
+            ec = make_error_code(CHRONY_BAD_CHRONY_FLOAT_CONVERSION); 
+        }
+        
+        else if (value >= value_max)
+        {
+            // overflow but oh well
+            f = {(uint32_t(exp_max) << 25) | (uint32_t(coeff_max) & coeff_mask)};
+        }
+
+        else if (value <= value_min)
+        {
+            // underflow but oh well
+            f = {(uint32_t(exp_max) << 25) | (uint32_t(coeff_min) & coeff_mask)};
+        }
+
+        else
+        {
+            // frexp:  value = mantissa * 2^exp
+            // chrony: value = coeff * 2^(chrony_exp - 25)
+            // Choose coeff ~= mantissa * 2^24,
+            // therefore chrony_exp = exp + 1.
+
+            int exp{};
+            std::frexp(value, &exp);
+            const int32_t chrony_exp = exp+1;
+            const int32_t coeff      = static_cast<int32_t>(std::llround(std::ldexp(value, 25 - chrony_exp)));
+            
+            f = {
+                ((static_cast<uint32_t>(chrony_exp) & 0x7f) << 25) |
+                (static_cast<uint32_t>(coeff) & coeff_mask)
+            };
+        }
     }
     
 //----------------------------------------------------------------------------------------------------------------
@@ -121,7 +177,7 @@ namespace chrony
     {
         switch (mode)
         {
-        case source_mode::client            : return "server";
+        case source_mode::server            : return "server";
         case source_mode::peer              : return "peer";
         case source_mode::reference_clock   : return "refclock";
         default                             : return "unknown";
@@ -133,10 +189,10 @@ namespace chrony
         switch (state)
         {
             case source_state::selected         : return "selected";
-            case source_state::nonselectable    : return "unusable";
+            case source_state::unusable         : return "unusable";
             case source_state::falseticker      : return "falseticker";
             case source_state::jittery          : return "jittery";
-            case source_state::unselected       : return "combined";
+            case source_state::combined         : return "combined";
             case source_state::selectable       : return "selectable";
             default                             : return "unknown";
         }
@@ -146,12 +202,12 @@ namespace chrony
     {
         switch (state)
         {
-            case source_state::selected:      return '*';
-            case source_state::nonselectable: return '?';
-            case source_state::falseticker:   return 'x';
-            case source_state::jittery:       return '~';
-            case source_state::unselected:    return '+';
-            case source_state::selectable:    return '-';
+            case source_state::selected     : return '*';
+            case source_state::unusable     : return '?';
+            case source_state::falseticker  : return 'x';
+            case source_state::jittery      : return '~';
+            case source_state::combined     : return '+';
+            case source_state::selectable   : return '-';
             default:                          return '?';
         }
     }

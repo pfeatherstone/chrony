@@ -25,7 +25,8 @@ namespace chrony
         CHRONY_UNEXPECTED_COMMAND,
         CHRONY_UNEXPECTED_FORMAT,
         CHRONY_BAD_SEQUENCE_NUMBER,
-        CHRONY_BAD_REPLY_STATUS
+        CHRONY_BAD_REPLY_STATUS,
+        CHRONY_BAD_CHRONY_FLOAT_CONVERSION
     };
 
     std::error_code make_error_code(chrony_error ec);
@@ -35,8 +36,10 @@ namespace chrony
     struct chrony_float
     {
         uint32_t data{};
-        double to_double() const;
     };
+
+    double to_double(chrony_float f);
+    void   from_double(chrony_float& f, double value, std::error_code& ec);
 
 //----------------------------------------------------------------------------------------------------------------
 
@@ -116,7 +119,7 @@ namespace chrony
 
     enum class source_mode : std::uint16_t
     {
-        client          = 0,
+        server          = 0,
         peer            = 1,
         reference_clock = 2
     };
@@ -128,10 +131,10 @@ namespace chrony
     enum class source_state : std::uint16_t
     {
         selected      = 0, // *
-        nonselectable = 1, // ?
+        unusable      = 1, // ?
         falseticker   = 2, // x
         jittery       = 3, // ~
-        unselected    = 4, // +
+        combined      = 4, // +
         selectable    = 5  // -
     };
 
@@ -386,7 +389,7 @@ namespace chrony
 
         // Resize buffer and serialize
         bufread.resize(sizeof(response_header) + sizeof(payload_tracking));
-        bufwrite.resize(bufread.size());
+        bufwrite.assign(bufread.size(), '\0');
         memcpy(&bufwrite[0], &req, sizeof(req));
 
         // Send
@@ -662,7 +665,7 @@ namespace chrony
 
                 sources[count++] = std::move(pay);
 
-                if (count < sources.size())
+                if (count < (int32_t)sources.size())
                 {
                     state = state_t::reading;
                     send_source_data_req(self, client.sock, client.bufwrite, client.bufread, client.rand, seq, count);
@@ -803,7 +806,7 @@ namespace chrony
 
                 stats[count++] = std::move(pay);
 
-                if (count < stats.size())
+                if (count < (int32_t)stats.size())
                 {
                     state = state_t::reading;
                     send_sourcestats_req(self, client.sock, client.bufwrite, client.bufread, client.rand, seq, count);
@@ -831,3 +834,13 @@ namespace chrony
 //----------------------------------------------------------------------------------------------------------------
 
 }
+
+//----------------------------------------------------------------------------------------------------------------
+
+namespace std
+{
+    template <>
+    struct is_error_code_enum<chrony::chrony_error> : true_type {};
+}
+
+//----------------------------------------------------------------------------------------------------------------

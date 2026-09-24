@@ -78,6 +78,7 @@ TEST_CASE("sources [callback]")
     client.async_read_sources([&](boost::system::error_code ec, const auto& sources) {
         CHECK(!ec);
         sources_done = true;
+        (void)sources; //TODO - check the contents of sources
     });
 
     ioc.run();
@@ -131,6 +132,7 @@ TEST_CASE("stats [callback]")
     client.async_read_sourcestats([&](boost::system::error_code ec, const auto& stats) {
         CHECK(!ec);
         stats_done = true;
+        (void)stats; //TODO - check the contents of stats
     });
 
     ioc.run();

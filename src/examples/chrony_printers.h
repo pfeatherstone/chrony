@@ -20,15 +20,15 @@ inline void print(const chrony::payload_tracking& pay)
     fmt::println("  stratum             : {}", pay.stratum);
     fmt::println("  leap_status         : {}", to_string(pay.status));
     fmt::println("  ref_time            : {}", pay.ref_time.to_time_point());
-    fmt::println("  current_correction  : {}", pay.current_correction.to_double());
-    fmt::println("  last_offset         : {}", pay.last_offset.to_double());
-    fmt::println("  rms_offset          : {}", pay.rms_offset.to_double());
-    fmt::println("  freq_offset_ppm     : {}", pay.freq_offset_ppm.to_double());
-    fmt::println("  freq_residual_ppm   : {}", pay.freq_residual_ppm.to_double());
-    fmt::println("  skew_ppm            : {}", pay.skew_ppm.to_double());
-    fmt::println("  root_delay          : {}", pay.root_delay.to_double());
-    fmt::println("  root_dispersion     : {}", pay.root_dispersion.to_double());
-    fmt::println("  last_update_interval: {}", pay.last_update_interval.to_double());
+    fmt::println("  current_correction  : {}", to_double(pay.current_correction));
+    fmt::println("  last_offset         : {}", to_double(pay.last_offset));
+    fmt::println("  rms_offset          : {}", to_double(pay.rms_offset));
+    fmt::println("  freq_offset_ppm     : {}", to_double(pay.freq_offset_ppm));
+    fmt::println("  freq_residual_ppm   : {}", to_double(pay.freq_residual_ppm));
+    fmt::println("  skew_ppm            : {}", to_double(pay.skew_ppm));
+    fmt::println("  root_delay          : {}", to_double(pay.root_delay));
+    fmt::println("  root_dispersion     : {}", to_double(pay.root_dispersion));
+    fmt::println("  last_update_interval: {}", to_double(pay.last_update_interval));
     fmt::println("");
 }
 
@@ -52,9 +52,9 @@ inline void print(const std::vector<chrony::payload_source_data>& sources)
             duration_cast<seconds>(source.poll()).count(),
             source.reachability,
             source.since_sample,
-            static_cast<int64_t>(source.adjusted_measurement.to_double()*1e6),
-            static_cast<int64_t>(source.original_measurement.to_double()*1e6),
-            static_cast<int64_t>(source.measurement_error.to_double()*1e6)
+            static_cast<int64_t>(to_double(source.adjusted_measurement)*1e6),
+            static_cast<int64_t>(to_double(source.original_measurement)*1e6),
+            static_cast<int64_t>(to_double(source.measurement_error)*1e6)
         );
     }
     fmt::println("");
@@ -75,11 +75,11 @@ inline void print(const std::vector<chrony::payload_sourcestats>& stats)
             stat.n_samples,
             stat.n_runs,
             stat.span_seconds,
-            stat.sample_stdev.to_double() * 1e6,
-            stat.freq_residual_ppm.to_double(),
-            stat.skew_ppm.to_double(),
-            stat.estimated_offset.to_double() * 1e6,
-            stat.estimated_offset_error.to_double() * 1e6
+            to_double(stat.sample_stdev) * 1e6,
+            to_double(stat.freq_residual_ppm),
+            to_double(stat.skew_ppm),
+            to_double(stat.estimated_offset) * 1e6,
+            to_double(stat.estimated_offset_error) * 1e6
         );
     }
     fmt::println("");
